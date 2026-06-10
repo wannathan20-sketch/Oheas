@@ -1,0 +1,38 @@
+services:
+  api:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=${DATABASE_URL:-postgresql+asyncpg://oheas:oheas@db:5432/oheas}
+      - JWT_SECRET=${JWT_SECRET:-change-me-in-production}
+      - APPLE_TEAM_ID=${APPLE_TEAM_ID:-}
+      - APPLE_CLIENT_ID=${APPLE_CLIENT_ID:-com.oheas.mvp}
+      - DEBUG=${DEBUG:-false}
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+
+  # Local PostgreSQL for development.
+  # In production, set DATABASE_URL to your Supabase / hosted Postgres connection string
+  # and remove or stop the db service.
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: oheas
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-oheas}
+      POSTGRES_DB: oheas
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U oheas"]
+      interval: 3s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+volumes:
+  pgdata:

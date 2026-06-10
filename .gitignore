@@ -1,0 +1,15 @@
+.build/
+.derivedData/
+DerivedData/
+*.xcuserdata/
+*.xcuserstate
+.DS_Store
+deepseek.env
+OHeas.xcodeproj/xcshareddata/xcschemes/
+
+# Backend
+backend/.env
+backend/.venv/
+backend/__pycache__/
+backend/**/__pycache__/
+backend/.pytest_cache/

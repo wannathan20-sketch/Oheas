@@ -1,0 +1,55 @@
+name: OHeas
+options:
+  minimumXcodeGenVersion: 2.42.0
+  deploymentTarget:
+    iOS: "17.0"
+packages:
+  OHeasCore:
+    path: .
+targets:
+  OHeas:
+    type: application
+    platform: iOS
+    sources:
+      - OHeasApp
+    dependencies:
+      - package: OHeasCore
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.oheas.mvp
+        PRODUCT_NAME: OHeas
+        INFOPLIST_FILE: OHeasApp/Info.plist
+        CODE_SIGN_ENTITLEMENTS: OHeasApp/OHeas.entitlements
+        DEVELOPMENT_TEAM: "6YFW7W33NV"
+        CODE_SIGN_STYLE: Automatic
+        SWIFT_VERSION: 6.0
+  OHeasAppTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - OHeasAppTests
+    dependencies:
+      - target: OHeas
+    settings:
+      base:
+        SWIFT_VERSION: 6.0
+        GENERATE_INFOPLIST_FILE: YES
+schemes:
+  OHeas:
+    build:
+      targets:
+        OHeas: all
+        OHeasAppTests: [test]
+    run:
+      config: Debug
+      environmentVariables:
+        - variable: DEEPSEEK_API_KEY
+          value: "DEEPSEEK_API_KEY_PLACEHOLDER"
+          isEnabled: true
+        - variable: DEEPSEEK_MODEL
+          value: deepseek-chat
+          isEnabled: true
+    test:
+      config: Debug
+      targets:
+        - OHeasAppTests
