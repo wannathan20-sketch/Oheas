@@ -21,8 +21,13 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    # Enable pgvector extension
-    op.execute("CREATE EXTENSION IF NOT EXISTS vector")
+    conn = op.get_bind()
+    pgvector_available = conn.execute(
+        sa.text("SELECT EXISTS (SELECT 1 FROM pg_available_extensions WHERE name = 'vector')")
+    ).scalar()
+
+    if pgvector_available:
+        op.execute("CREATE EXTENSION IF NOT EXISTS vector")
 
     op.create_table(
         "memory_embeddings",
@@ -43,20 +48,21 @@ def upgrade() -> None:
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False,
                   server_default=sa.text("now()")),
     )
-    # Cast the ARRAY column to VECTOR for pgvector index support
-    op.execute(
-        "ALTER TABLE memory_embeddings ALTER COLUMN embedding TYPE vector(1536) USING embedding::vector(1536)"
-    )
     op.create_index("idx_emb_user_source", "memory_embeddings", ["user_id", "source_type"])
 
-    # IVFFlat index for cosine similarity search (build after data exists)
-    op.execute(
-        "CREATE INDEX IF NOT EXISTS idx_emb_cosine "
-        "ON memory_embeddings USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100)"
-    )
+    if pgvector_available:
+        # Cast the ARRAY column to VECTOR for pgvector index support.
+        op.execute(
+            "ALTER TABLE memory_embeddings ALTER COLUMN embedding TYPE vector(1536) USING embedding::vector(1536)"
+        )
+        # IVFFlat index for cosine similarity search.
+        op.execute(
+            "CREATE INDEX IF NOT EXISTS idx_emb_cosine "
+            "ON memory_embeddings USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100)"
+        )
 
 
 def downgrade() -> None:
-    op.drop_index("idx_emb_cosine", table_name="memory_embeddings")
+    op.execute("DROP INDEX IF EXISTS idx_emb_cosine")
     op.drop_index("idx_emb_user_source", table_name="memory_embeddings")
     op.drop_table("memory_embeddings")

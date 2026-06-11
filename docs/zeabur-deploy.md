@@ -195,6 +195,8 @@ oheas-db → **Backups** → 手动备份或设置自动备份策略。
 
 检查 `OPENAI_API_KEY` 是否已设置。不设置时自动降级到本地 token 匹配（功能正常但精度较低）。
 
+Zeabur 托管 PostgreSQL 如果不提供 `vector` 扩展，迁移会跳过 pgvector 索引并保留文本 fallback；需要语义向量检索时建议改用支持 pgvector 的 Supabase/Postgres。
+
 ---
 
 ## Free 计划够用吗？
