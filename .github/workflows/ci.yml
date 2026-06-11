@@ -1,0 +1,86 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ── Swift: Core build + test + xcodebuild + preflight ──────
+  swift:
+    name: Swift (macOS)
+    runs-on: macos-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache Swift packages
+        uses: actions/cache@v4
+        with:
+          path: .build
+          key: swift-pm-${{ runner.os }}-${{ hashFiles('Package.swift') }}
+          restore-keys: |
+            swift-pm-${{ runner.os }}-
+
+      - name: Build (swift build)
+        run: swift build
+
+      - name: Core tests (swift test)
+        run: swift test
+
+      - name: Find & boot simulator
+        run: |
+          # Find newest available iPhone simulator
+          SIM_INFO=$(xcrun simctl list devices available iPhone | grep -E "iPhone 1[6-9]" | tail -1)
+          DEVICE_ID=$(echo "$SIM_INFO" | grep -oE '[A-F0-9]{8}-([A-F0-9]{4}-){3}[A-F0-9]{12}')
+          DEVICE_NAME=$(echo "$SIM_INFO" | grep -oE 'iPhone [^ ]+' | head -1)
+          echo "DEVICE_ID=$DEVICE_ID" >> $GITHUB_ENV
+          echo "DEVICE_NAME=$DEVICE_NAME" >> $GITHUB_ENV
+          xcrun simctl boot "$DEVICE_ID" || true
+          echo "Using: $DEVICE_NAME ($DEVICE_ID)"
+
+      - name: ViewModel + connectivity tests (xcodebuild)
+        run: |
+          xcodebuild test \
+            -project OHeas.xcodeproj \
+            -scheme OHeas \
+            -destination "platform=iOS Simulator,id=$DEVICE_ID" \
+            2>&1 | tail -60
+
+      - name: Preflight release check
+        run: ./scripts/preflight_release_check.sh
+
+  # ── Backend: pytest ─────────────────────────────────────────
+  backend:
+    name: Backend (Python)
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: pip-${{ runner.os }}-${{ hashFiles('backend/requirements.txt') }}
+          restore-keys: |
+            pip-${{ runner.os }}-
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r backend/requirements.txt
+          pip install aiosqlite pytest pytest-asyncio
+
+      - name: Run backend tests
+        working-directory: backend
+        run: python -m pytest app/tests/ -v

@@ -201,7 +201,7 @@ final class ChatViewModel: ObservableObject {
 
     // MARK: - System Prompt
 
-    func buildSystemPrompt(context: AgentContext?, preferredLanguage: String = "en") -> String {
+    func buildSystemPrompt(context: AgentContext?, preferredLanguage: String = "en", userQuery: String = "") -> String {
         let zh = preferredLanguage == "zh"
         var prompt = ""
 
@@ -348,26 +348,40 @@ final class ChatViewModel: ObservableObject {
             }
         }
 
+        // Only include plan/experiment/goals/patterns when relevant to the query.
+        // This keeps the system prompt lean and focused.
+        let lowerQuery = userQuery.lowercased()
+        let queryRelevant = { (keywords: [String]) -> Bool in
+            keywords.contains { lowerQuery.contains($0) }
+        }
+
+        // Always include plan if it exists (health coach should know the plan)
         if let plan = ctx.currentWeeklyPlan, !plan.days.isEmpty {
             prompt += zh ? "\n### 本周计划\n策略：\(plan.strategySummary)\n" : "\n### Weekly Plan\nStrategy: \(plan.strategySummary)\n"
-            for day in plan.days.prefix(4) {
-                prompt += "- \(day.date.formatted(date: .abbreviated, time: .omitted))：\(day.title)（\(day.planType.rawValue)）\n"
+            for day in plan.days.prefix(3) {
+                prompt += "- \(day.date.formatted(date: .abbreviated, time: .omitted))：\(day.title)\n"
             }
         }
 
-        if let exp = ctx.activeExperiment {
-            prompt += zh ? "\n### 活跃实验\n标题：\(exp.title)\n假设：\(exp.hypothesis)\n干预：\(exp.intervention)\n"
-                : "\n### Active Experiment\nTitle: \(exp.title)\nHypothesis: \(exp.hypothesis)\nIntervention: \(exp.intervention)\n"
+        // Experiment: only include when user asks about it
+        if let exp = ctx.activeExperiment,
+           queryRelevant(["experiment", "实验", "测试", "trial", "hypothesis", "假设"]) || userQuery.isEmpty {
+            prompt += zh ? "\n### 活跃实验\n\(exp.title)：\(exp.intervention)\n"
+                : "\n### Active Experiment\n\(exp.title): \(exp.intervention)\n"
         }
 
-        if !ctx.activeGoals.isEmpty {
+        // Goals: only include when relevant
+        if !ctx.activeGoals.isEmpty,
+           queryRelevant(["goal", "目标", "progress", "进展", "plan", "计划"]) || userQuery.isEmpty {
             prompt += zh ? "\n### 用户目标\n" : "\n### User Goals\n"
             for g in ctx.activeGoals { prompt += "- \(g.title)\n" }
         }
 
-        if !ctx.knownPatterns.isEmpty {
+        // Patterns: only include top-2, and only when relevant
+        if !ctx.knownPatterns.isEmpty,
+           queryRelevant(["pattern", "模式", "history", "历史", "usual", "平时", "习惯", "trend", "趋势"]) || userQuery.isEmpty {
             prompt += zh ? "\n### 已学习的模式\n" : "\n### Learned Patterns\n"
-            for p in ctx.knownPatterns.prefix(3) { prompt += "- \(p.title)\n" }
+            for p in ctx.knownPatterns.prefix(2) { prompt += "- \(p.title)\n" }
         }
 
         if zh {
@@ -415,6 +429,7 @@ final class ChatViewModel: ObservableObject {
 
     private func streamCoachResponse(userText: String, context: AgentContext?, aiEnabled: Bool, preferredLanguage: String = "en") async {
         let config = OpenAIAppConfiguration.load()
+        let windowManager = ContextWindowManager()
 
         guard aiEnabled else {
             connectionStatus = .localOnly
@@ -433,16 +448,18 @@ final class ChatViewModel: ObservableObject {
         let ragResults = await ragService.search(query: userText, topK: 3)
         let ragContext = formatRAGResults(ragResults, preferredLanguage: preferredLanguage)
 
-        let systemPrompt = buildSystemPrompt(context: context, preferredLanguage: preferredLanguage)
-        let augmentedPrompt = systemPrompt + ragContext
-        var apiMessages: [[String: String]] = [["role": "system", "content": augmentedPrompt]]
-
+        let systemPrompt = buildSystemPrompt(context: context, preferredLanguage: preferredLanguage, userQuery: userText)
         let msgs = currentSession?.messages ?? []
-        let recentHistory = msgs.suffix(21).dropLast()
-        for msg in recentHistory {
-            apiMessages.append(["role": msg.role == .user ? "user" : "assistant", "content": msg.content])
-        }
-        apiMessages.append(["role": "user", "content": userText])
+        let summary = currentSession?.summary
+
+        // Use sliding window to build API messages (dynamic token budget, not fixed 20)
+        let apiMessages = windowManager.buildMessages(
+            systemPrompt: systemPrompt,
+            messages: msgs,
+            summary: summary,
+            ragContext: ragContext,
+            maxHistoryTokens: 3000
+        )
 
         let timeoutTask = Task {
             try? await Task.sleep(nanoseconds: 15_000_000_000)
@@ -501,6 +518,9 @@ final class ChatViewModel: ObservableObject {
         }
         streamState = .idle
         streamingText = ""
+
+        // Check if conversation is getting long and needs summarization
+        await maybeSummarize()
     }
 
     // MARK: - Message helpers
@@ -533,6 +553,65 @@ final class ChatViewModel: ObservableObject {
         currentSession = nil
         errorMessage = nil
         try? messageStore.deleteAll()
+    }
+
+    // MARK: - Summarization
+
+    /// Check if conversation is long enough to summarize, and if so, compress older messages.
+    /// Uses LLM when available, falls back to rule-based extraction.
+    private func maybeSummarize() async {
+        guard var session = currentSession else { return }
+        let windowManager = ContextWindowManager()
+
+        // Guard: only summarize if exceeded threshold AND no summary exists yet (or messages doubled since last summary)
+        guard windowManager.shouldSummarize(messages: session.messages) else { return }
+        guard session.summary == nil || session.messages.count > 25 else { return }
+
+        let (toSummarize, toKeep) = windowManager.splitForSummarization(messages: session.messages, keepRecent: 8)
+        guard !toSummarize.isEmpty else { return }
+
+        // Try LLM-based summarization, fall back to rule-based
+        let newSummary: String
+        let config = OpenAIAppConfiguration.load()
+        if let client = config.makeClient() as? ChatCompletionsClient {
+            let summaryPrompt = windowManager.buildSummarizeRequest(messages: toSummarize)
+            let summaryMessages: [[String: String]] = [
+                ["role": "user", "content": summaryPrompt]
+            ]
+            do {
+                let stream = client.chat(messages: summaryMessages)
+                var accumulated = ""
+                for try await event in stream {
+                    if event.isComplete { break }
+                    accumulated = event.accumulatedText
+                }
+                let trimmed = accumulated.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !trimmed.isEmpty {
+                    newSummary = trimmed
+                } else {
+                    newSummary = windowManager.ruleBasedSummary(messages: toSummarize)
+                }
+            } catch {
+                newSummary = windowManager.ruleBasedSummary(messages: toSummarize)
+            }
+        } else {
+            newSummary = windowManager.ruleBasedSummary(messages: toSummarize)
+        }
+
+        // Merge with existing summary if any
+        if let existing = session.summary, !existing.isEmpty {
+            session.summary = existing + "\n---\n" + newSummary
+        } else {
+            session.summary = newSummary
+        }
+
+        // Trim messages to keep only the recent window + summary
+        session.messages = toKeep
+        session.updatedAt = Date()
+        currentSession = session
+        upsertCurrentSession()
+
+        print("[ChatViewModel] Summarized \(toSummarize.count) messages → keeping \(toKeep.count) recent + summary")
     }
 
     // MARK: - Context-Aware Fallback

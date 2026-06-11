@@ -38,19 +38,23 @@ public struct ChatSession: Identifiable, Equatable, Codable, Sendable {
     public let createdAt: Date
     public var updatedAt: Date
     public var messages: [ChatMessage]
+    /// Compressed summary of earlier conversation turns. Nil until first summarization.
+    public var summary: String?
 
     public init(
         id: UUID = UUID(),
         title: String = "New Chat",
         createdAt: Date = Date(),
         updatedAt: Date = Date(),
-        messages: [ChatMessage] = []
+        messages: [ChatMessage] = [],
+        summary: String? = nil
     ) {
         self.id = id
         self.title = title
         self.createdAt = createdAt
         self.updatedAt = updatedAt
         self.messages = messages
+        self.summary = summary
     }
 
     /// Derive a display-friendly title from the first user message.
