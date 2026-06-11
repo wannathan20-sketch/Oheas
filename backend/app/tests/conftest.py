@@ -28,7 +28,12 @@ async def _ensure_tables() -> None:
     async with _table_lock:
         if not _tables_created:
             async with _test_engine.begin() as conn:
-                await conn.run_sync(Base.metadata.create_all)
+                # Create tables, skip pgvector-dependent ones on SQLite
+                def _create(c):
+                    skip = {"memory_embeddings"}
+                    to_create = [t for n, t in Base.metadata.tables.items() if n not in skip]
+                    Base.metadata.create_all(c, tables=to_create)
+                await conn.run_sync(_create)
             _tables_created = True
 
 

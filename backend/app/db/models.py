@@ -10,9 +10,15 @@ from __future__ import annotations
 import uuid as _uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import DateTime, ForeignKey, Index, JSON, String, Text, func
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy import DateTime, Float, ForeignKey, Index, JSON, String, Text, func
+from sqlalchemy.dialects.postgresql import ARRAY, UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+
+try:
+    from pgvector.sqlalchemy import Vector  # type: ignore[import-untyped]
+    HAS_PGVECTOR = True
+except ImportError:
+    HAS_PGVECTOR = False
 
 
 class Base(DeclarativeBase):
@@ -184,3 +190,36 @@ class SyncState(Base, _EntityMixin):  # type: ignore[misc]
     __tablename__ = "sync_state"
     # Override payload to default to 'localOnly' mode
     payload: Mapped[dict] = mapped_column(JSON, nullable=False, default=lambda: {"mode": "localOnly"})
+
+
+# ── RAG / pgvector ──────────────────────────────────────────────
+
+
+class MemoryEmbedding(Base):  # type: ignore[misc]
+    __tablename__ = "memory_embeddings"
+
+    id: Mapped[_uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=_uuid.uuid4
+    )
+    user_id: Mapped[_uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("auth_users.id", ondelete="cascade"),
+        index=True, nullable=False,
+    )
+    source_type: Mapped[str] = mapped_column(
+        String(32), nullable=False, index=True,
+        comment="pattern / intervention / feedback / experiment / recommendation / review",
+    )
+    source_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    embedding: Mapped[list[float] | None] = mapped_column(
+        # pgvector: VECTOR(1536) for text-embedding-3-small
+        Vector(1536) if HAS_PGVECTOR else ARRAY(Float),
+        nullable=True,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, nullable=False
+    )
+
+    __table_args__ = (
+        Index("idx_emb_user_source", "user_id", "source_type"),
+    )

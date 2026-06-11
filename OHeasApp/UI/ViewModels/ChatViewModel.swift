@@ -51,6 +51,7 @@ final class ChatViewModel: ObservableObject {
         maxMessagesPerSession: 200,
         maxSessions: 50
     )
+    private let ragService = RAGService()
 
     // MARK: - Connection
 
@@ -427,8 +428,14 @@ final class ChatViewModel: ObservableObject {
         }
 
         connectionStatus = .connected
+
+        // RAG: search relevant memories for this query
+        let ragResults = await ragService.search(query: userText, topK: 3)
+        let ragContext = formatRAGResults(ragResults, preferredLanguage: preferredLanguage)
+
         let systemPrompt = buildSystemPrompt(context: context, preferredLanguage: preferredLanguage)
-        var apiMessages: [[String: String]] = [["role": "system", "content": systemPrompt]]
+        let augmentedPrompt = systemPrompt + ragContext
+        var apiMessages: [[String: String]] = [["role": "system", "content": augmentedPrompt]]
 
         let msgs = currentSession?.messages ?? []
         let recentHistory = msgs.suffix(21).dropLast()
@@ -626,5 +633,28 @@ final class ChatViewModel: ObservableObject {
             }
         }
         return type.rawValue
+    }
+
+    // MARK: - RAG
+
+    /// Format RAG search results as a prompt segment for the LLM.
+    private func formatRAGResults(_ results: [RAGSearchResult], preferredLanguage: String) -> String {
+        guard !results.isEmpty else { return "" }
+        let zh = preferredLanguage == "zh"
+        var text = zh ? "\n\n## 相关历史记忆（RAG 检索）\n以下是从用户历史中检索到的相关信息，可在回答时自然引用：\n"
+            : "\n\n## Related Memories (RAG Retrieved)\nThe following are relevant memories from the user's history. Reference them naturally:\n"
+        for (i, r) in results.enumerated() {
+            text += "\(i + 1). [\(r.sourceLabel)] \(r.content.prefix(300))\n"
+        }
+        return text
+    }
+
+    /// Index health memories for future RAG search.
+    /// Call this after significant events: recommendation generated, feedback saved, etc.
+    func indexMemoryForRAG(sourceType: String, sourceId: String, content: String) {
+        let item = MemoryIndexItem(sourceType: sourceType, sourceId: sourceId, content: content)
+        Task {
+            await ragService.index(items: [item])
+        }
     }
 }

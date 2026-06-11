@@ -9,6 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
 from app.routes import auth, health, sync
+from app.rag.routes import router as rag_router
 
 
 @asynccontextmanager
@@ -39,3 +40,4 @@ app.add_middleware(
 app.include_router(health.router)
 app.include_router(auth.router)
 app.include_router(sync.router)
+app.include_router(rag_router)

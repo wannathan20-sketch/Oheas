@@ -25,6 +25,9 @@ class Settings(BaseSettings):
     apple_team_id: str = ""
     apple_client_id: str = "com.oheas.mvp"
 
+    # ── OpenAI (for embeddings) ───────────────────────────────
+    openai_api_key: str = ""
+
     # ── App ───────────────────────────────────────────────────
     debug: bool = False
     cors_origins: str = "*"
