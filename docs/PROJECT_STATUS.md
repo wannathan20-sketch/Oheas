@@ -1,6 +1,6 @@
 # OHeas 项目状态
 
-> 最后更新：2026-06-11（Phase 11 RAG：pgvector 语义检索 ✅ + Backend 搜索/索引 API ✅ + iOS RAGService ✅ + Chat 集成 ✅）
+> 最后更新：2026-06-11（Phase 12 CI/CD ✅ + Phase 13 多轮对话优化 ✅ + Apple Sign In 待合 + APNs 待合）
 
 ## 一句话定位
 
@@ -537,16 +537,18 @@ Fail:   0 ✅
 
 ### 仍然存在的局限
 
-1. **Backend 未部署**：JWT + Apple Sign In + RAG API + Sync 代码就绪，Docker Compose 一键启动，Alembic auto-migrate。需部署到 Zeabur / VPS + 配置 Apple Developer Service ID
+1. **Backend 未部署**：JWT + Apple Sign In + RAG API + Sync + APNs 代码就绪，Docker Compose 一键启动，Alembic auto-migrate。需部署到 Zeabur / VPS + 配置 Apple Developer Service ID
 2. **真机端到端 sync 未验证**：Sync 端点代码已通过 pytest 测试，但尚未在真实设备上走完整 Upload→Fetch→Delete 循环
 3. **Backend 测试需 PostgreSQL**：pgvector 表在 SQLite 上不可用，conftest 跳过 `memory_embeddings`；RAG 完整测试需 PostgreSQL 环境
 4. **RAG 依赖 OpenAI embedding API**：未配置 `OPENAI_API_KEY` 时自动降级到本地 token 匹配
 5. **冲突策略是 last-write-wins**：多设备场景可能需要 CRDT
 6. **SafetyGuardrail L2 依赖 LLM 可用性**：LLM 不可用时自动 fallback 到 L1
-7. **没有推送通知**：只有本地通知（APNs 规划中）
+7. **APNs 代码就绪但未配置**：需 Apple Developer 创建 APNs Key + 合入 main
 8. **流式输出不兼容 structured JSON schema**：流式模式下移除 `response_format: json_object`，改用 prompt 指令约束 JSON 输出
 9. ~~无 Alembic migration~~ ✅ 已创建初始 + pgvector 两个 migration
 10. ~~无 RAG 检索~~ ✅ pgvector 语义检索 + 本地 fallback 已实现
+11. ~~无 CI/CD~~ ✅ GitHub Actions 双 Job (macOS + Ubuntu) 133 tests
+12. ~~多轮对话无上下文管理~~ ✅ ContextWindowManager 动态滑窗 + 自动摘要
 
 ---
 
@@ -634,15 +636,14 @@ docker compose up -d                    # API + DB
 
 | 优先级 | 任务 | 预计工作量 | 状态 |
 |--------|------|-----------|------|
-| **P0** | **部署 Backend 到 Zeabur / VPS** | **0.5 天** | **指南就绪** → `docs/zeabur-deploy.md` |
-| **P0** | **Apple Developer 配置 Sign in with Apple Service ID** | **0.5 天** | **指南已就绪** → `docs/apple-sign-in-setup.md` |
+| **P0** | **部署 Backend 到 Zeabur / VPS** | **0.5 天** | **进行中** |
+| **P0** | **Apple Developer 配置 Sign in with Apple Service ID** | **0.5 天** | **代码就绪，待 Web 配置** |
 | ~~P1~~ | ~~RAG 语义检索（pgvector + embedding）~~ | — | ✅ 已完成 |
-| **P1** | **GitHub Actions CI/CD（133 tests + Build）** | **1 小时** | **待实现** |
-| **P1** | **APNs 远程推送 + 异常告警** | **3 天** | **待实现** |
+| ~~P1~~ | ~~GitHub Actions CI/CD~~ | — | ✅ 已完成 |
+| ~~P2~~ | ~~多轮对话优化（sliding window + 上下文摘要）~~ | — | ✅ 已完成 |
+| **P1** | **APNs 远程推送 + 异常告警** | **3 天** | **代码就绪，待合入 main** |
 | **P1** | **Watch Complication（表盘身体预算环）** | **2 天** | **待实现** |
-| ~~P0~~ | ~~Alembic 初始 migration~~ | — | ✅ 已完成 |
 | P1 | 真机端到端验证（17 步 Checklist） | 1 天 | 待执行 |
-| P2 | 多轮对话优化（sliding window + 上下文摘要） | 2 天 | 待开始 |
 | P3 | 多语言扩展 / Oura Ring 集成 / 离线 LLM | — | 待开始 |
 
 ### 已完成 Phase 总览
@@ -654,7 +655,9 @@ docker compose up -d                    # API + DB
 | 8 | Chat 对话 + Tab 精简 + 视觉 | 3 Tab、Hero 渐变、Sparkline、多轮对话、会话历史 |
 | 9 | P0 产品优化 | Chat 持久化、Keychain API Key、流式状态区分 |
 | **10** | **后端实质化** | **JWT 认证、PostgreSQL 持久化、Sync 真实实现、Apple Sign In、Docker** |
-| **11** | **RAG 语义检索 + 技术栈补充** | **pgvector 语义检索 ✅、GitHub Actions CI/CD（待）、APNs 推送（待）、Watch Complication（待）** |
+| **11** | **RAG 语义检索** | **pgvector 语义检索、6 种检索源、Chat 上下文注入** |
+| **12** | **CI/CD** | **GitHub Actions: swift build + test (80) + xcodebuild (38) + pytest (15)** |
+| **13** | **多轮对话优化** | **ContextWindowManager token 估算、动态滑窗、自动摘要、System Prompt 按需裁剪** |
 
 ---
 
@@ -701,6 +704,41 @@ docker compose up -d                    # API + DB
 | RAG 检索 | `ChatViewModel.swift` | sendMessage 前 `await ragService.search(query, topK: 3)` |
 | 格式化注入 | `ChatViewModel.swift` | `formatRAGResults()` → 中英双语 prompt 片段 → 追加到 System Prompt 末尾 |
 | 索引接口 | `ChatViewModel.swift` | `indexMemoryForRAG(sourceType, sourceId, content)` 供外部调用 |
+
+---
+
+## Phase 12 — GitHub Actions CI/CD ✅ 已完成
+
+**目标**：每次 push/PR 自动运行全部 133 个测试 + 构建验证。
+
+| 改动 | 文件 | 说明 |
+|------|------|------|
+| CI workflow | `.github/workflows/ci.yml` 🆕 | 2 Job 并行：Swift (macOS) + Backend (Ubuntu) |
+| Swift job | 同上 | swift build → swift test (80) → 启动模拟器 → xcodebuild test (38) → preflight |
+| Backend job | 同上 | pip install → pytest (15) |
+| 缓存 | 同上 | SPM + pip 缓存加速后续运行 |
+
+**触发条件**：push/PR to `main`，自动取消旧运行。
+
+---
+
+## Phase 13 — 多轮对话优化 ✅ 已完成
+
+**目标**：从硬编码 20 条消息窗口升级为 token 感知的动态滑窗 + 自动摘要。
+
+| 改动 | 文件 | 说明 |
+|------|------|------|
+| ContextWindowManager | `Sources/OHeasCore/LLM/ContextWindowManager.swift` 🆕 | Token 估算（中英混合 ~2.5 字/token）、动态滑窗、摘要触发阈值、LLM 摘要 prompt 构建、规则摘要 fallback |
+| ChatSession.summary | `Storage/ChatMessageStore.swift` | 新增 `summary: String?` 字段，持久化压缩后的对话上下文 |
+| 动态窗口 | `ChatViewModel.swift` | `suffix(21)` → `ContextWindowManager.buildMessages()` 按 token 预算动态裁剪 |
+| 自动摘要 | `ChatViewModel.swift` | `maybeSummarize()` → 每次回复后检测，LLM 摘要 + 规则 fallback，保留最近 8 条 |
+| System Prompt 裁剪 | `ChatViewModel.swift` | 按查询关键词匹配：plan/experiment/patterns 只在相关时注入 |
+
+**效果**：
+- 短对话（<15 条）：无变化
+- 长对话（20+ 条）：自动摘要压缩旧消息，保留关键上下文
+- 50+ 条：摘要叠加，LLM 仍能引用历史话题
+- System Prompt：从 ~1500 token 降到 ~800 token（无关查询）
 
 ---
 
