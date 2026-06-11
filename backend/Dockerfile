@@ -13,8 +13,10 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY app/ ./app/
 COPY alembic.ini .
 COPY alembic/ ./alembic/
+COPY start.sh .
+RUN chmod +x start.sh
 
 EXPOSE 8000
 
-# Zeabur / PaaS platforms set PORT; default to 8000 for local Docker
-CMD alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}
+# Zeabur injects PORT; defaults to 8000 for local Docker
+CMD ["./start.sh"]
