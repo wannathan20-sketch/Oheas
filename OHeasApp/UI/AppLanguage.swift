@@ -433,6 +433,8 @@ enum AppLanguage: String, CaseIterable, Identifiable, Equatable {
         case (.english, .signInLabel): "Sign In"
         case (.chinese, .signUpLabel): "注册"
         case (.english, .signUpLabel): "Sign Up"
+        case (.chinese, .signInFooter): "使用 Apple ID 登录以同步数据到云端"
+        case (.english, .signInFooter): "Sign in with Apple ID to sync your data to the cloud"
         case (.chinese, .localOnlyModeLabel): "仅本地"
         case (.english, .localOnlyModeLabel): "LocalOnly"
         case (.chinese, .cloudSyncModeLabel): "云同步"
@@ -998,6 +1000,7 @@ enum TextKey {
     case passwordLabel
     case signInLabel
     case signUpLabel
+    case signInFooter
     case localOnlyModeLabel
     case cloudSyncModeLabel
     case signedOutModeLabel

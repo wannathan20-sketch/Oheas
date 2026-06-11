@@ -138,7 +138,8 @@ final class SyncViewModel: ObservableObject {
                 currentUser = AuthenticatedUser(
                     id: pair.userId,
                     email: credential.email,
-                    displayName: fullName.isEmpty ? nil : fullName
+                    displayName: fullName.isEmpty ? nil : fullName,
+                    isLocalOnly: false
                 )
                 authState = .signedIn
                 try syncEngine.resumeCloudSync()
@@ -182,7 +183,8 @@ final class SyncViewModel: ObservableObject {
         currentUser = AuthenticatedUser(
             id: pair.userId,
             email: nil,
-            displayName: nil
+            displayName: nil,
+            isLocalOnly: false
         )
         authState = .signedIn
         if let baseURL = backendBaseURL {
