@@ -1,6 +1,6 @@
 # OHeas 项目状态
 
-> 最后更新：2026-06-10（P0 推进：Alembic 初始 migration ✅ + Docker Compose 完善 ✅ + Apple Sign In 配置指南 ✅ + Backend README 重写）
+> 最后更新：2026-06-11（Phase 11 RAG：pgvector 语义检索 ✅ + Backend 搜索/索引 API ✅ + iOS RAGService ✅ + Chat 集成 ✅）
 
 ## 一句话定位
 
@@ -14,10 +14,10 @@
 
 | 层 | 文件数 | 行数（估算） | 技术栈 |
 |----|--------|-------------|--------|
-| Core 库 | 50 `.swift` | ~6,500 | Foundation, HealthKit, UserNotifications |
-| App UI | 40 `.swift` | ~5,500 | SwiftUI |
+| Core 库 | 51 `.swift` | ~6,800 | Foundation, HealthKit, UserNotifications |
+| App UI | 40 `.swift` | ~5,600 | SwiftUI |
 | 测试 | 2 文件 | ~1,750 | Swift Testing |
-| 后端 | 18 文件 | ~2,100 | FastAPI + SQLAlchemy + JWT + Alembic + Docker |
+| 后端 | 23 文件 | ~2,900 | FastAPI + SQLAlchemy + JWT + Alembic + Docker + pgvector + OpenAI embedding |
 | 文档 | 13 文件 | ~ | Markdown |
 | 脚本 | 2 文件 | ~80 | Bash |
 
@@ -361,6 +361,17 @@ WeeklyPlanPlanner + AdaptiveRescheduler → WeeklyPlan → PlanView
 WeeklyReviewEngine → WeeklyReviewView
         ↓
 EffectivenessAnalyzer → EffectivenessDashboardView
+        ↓
+── RAG Layer (Phase 11) ──
+MemoryStore / FeedbackStore / ExperimentStore / RecommendationHistory
+        ↓
+MemoryIndexItem (6 source types)
+        ↓
+RAGService → HTTPRAGClient (pgvector cosine) → LocalRAGClient (token fallback)
+        ↓
+ChatViewModel.formatRAGResults() → 注入 System Prompt
+        ↓
+Backend: EmbeddingService (OpenAI text-embedding-3-small) → pgvector VECTOR(1536) + ivfflat index
 
 ── ViewModel Layer (8 sub-VMs) ──
 HealthDataVM | RecommendationVM | PlanVM | MemoryVM | ExperimentVM | OnboardingVM | SyncVM | ChatVM
@@ -368,9 +379,9 @@ HealthDataVM | RecommendationVM | PlanVM | MemoryVM | ExperimentVM | OnboardingV
 OHeasViewModel (thin coordinator, delegation properties for backward compat)
         ↓
 ── Backend Layer (FastAPI + PostgreSQL) ──
-Apple Sign In → JWT Auth → SyncEngine → Repository → PostgreSQL (17 tables)
+Apple Sign In → JWT Auth → SyncEngine → RAG Search → Repository → PostgreSQL (18 tables incl. memory_embeddings)
         ↑
-iOS HTTPBackendAPIClient ← Bearer token (Keychain)
+iOS HTTPBackendAPIClient / HTTPRAGClient ← Bearer token (Keychain)
 ```
 
 ---
@@ -522,17 +533,20 @@ Fail:   0 ✅
 | "每个 Tab 顶部重复设置按钮" | ✅ 设置独立 Tab，删除冗余入口 |
 | "AppRootView + RootTabView 重复调用 load()" | ✅ AppRootView 唯一入口 |
 | "UI 平淡无视觉层次" | ✅ Hero 渐变 + 环形仪表 + 彩条卡片 + 网格布局 |
+| "Chat 上下文全是规则注入，无法回答历史问题" | ✅ pgvector RAG 语义检索 + 6 种健康记忆源 |
 
 ### 仍然存在的局限
 
-1. **Backend 未部署到 VPS**：JWT + Apple Sign In 代码就绪，Docker Compose 可一键启动，Alembic auto-migrate 已配置。需部署到 VPS + 配置 Apple Developer Service ID
-2. **真机端到端 sync 未验证**：Sync 端点代码已通过 6 个 pytest 测试，但尚未在真实设备上走完整 Upload→Fetch→Delete 循环
-3. **冲突策略是 last-write-wins**：多设备场景可能需要 CRDT
-4. **SafetyGuardrail L2 依赖 LLM 可用性**：LLM 不可用时自动 fallback 到 L1
-5. **无离线 LLM**：rule fallback 可用但僵硬；Chat 无网络时只返回预设回复
-6. **没有推送通知**：只有本地通知
-7. **流式输出不兼容 structured JSON schema**：流式模式下移除 `response_format: json_object`，改用 prompt 指令约束 JSON 输出
-8. ~~无 Alembic migration~~ ✅ 已创建 `alembic/versions/0001_initial_schema.py`（18 张表，含 upgrade/downgrade）
+1. **Backend 未部署**：JWT + Apple Sign In + RAG API + Sync 代码就绪，Docker Compose 一键启动，Alembic auto-migrate。需部署到 Zeabur / VPS + 配置 Apple Developer Service ID
+2. **真机端到端 sync 未验证**：Sync 端点代码已通过 pytest 测试，但尚未在真实设备上走完整 Upload→Fetch→Delete 循环
+3. **Backend 测试需 PostgreSQL**：pgvector 表在 SQLite 上不可用，conftest 跳过 `memory_embeddings`；RAG 完整测试需 PostgreSQL 环境
+4. **RAG 依赖 OpenAI embedding API**：未配置 `OPENAI_API_KEY` 时自动降级到本地 token 匹配
+5. **冲突策略是 last-write-wins**：多设备场景可能需要 CRDT
+6. **SafetyGuardrail L2 依赖 LLM 可用性**：LLM 不可用时自动 fallback 到 L1
+7. **没有推送通知**：只有本地通知（APNs 规划中）
+8. **流式输出不兼容 structured JSON schema**：流式模式下移除 `response_format: json_object`，改用 prompt 指令约束 JSON 输出
+9. ~~无 Alembic migration~~ ✅ 已创建初始 + pgvector 两个 migration
+10. ~~无 RAG 检索~~ ✅ pgvector 语义检索 + 本地 fallback 已实现
 
 ---
 
@@ -622,8 +636,8 @@ docker compose up -d                    # API + DB
 |--------|------|-----------|------|
 | **P0** | **部署 Backend 到 Zeabur / VPS** | **0.5 天** | **指南就绪** → `docs/zeabur-deploy.md` |
 | **P0** | **Apple Developer 配置 Sign in with Apple Service ID** | **0.5 天** | **指南已就绪** → `docs/apple-sign-in-setup.md` |
-| **P1** | **RAG 语义检索（pgvector + embedding）** | **0.5 天** | **待实现** |
-| **P1** | **GitHub Actions CI/CD（158 tests + Build）** | **1 小时** | **待实现** |
+| ~~P1~~ | ~~RAG 语义检索（pgvector + embedding）~~ | — | ✅ 已完成 |
+| **P1** | **GitHub Actions CI/CD（133 tests + Build）** | **1 小时** | **待实现** |
 | **P1** | **APNs 远程推送 + 异常告警** | **3 天** | **待实现** |
 | **P1** | **Watch Complication（表盘身体预算环）** | **2 天** | **待实现** |
 | ~~P0~~ | ~~Alembic 初始 migration~~ | — | ✅ 已完成 |
@@ -640,7 +654,53 @@ docker compose up -d                    # API + DB
 | 8 | Chat 对话 + Tab 精简 + 视觉 | 3 Tab、Hero 渐变、Sparkline、多轮对话、会话历史 |
 | 9 | P0 产品优化 | Chat 持久化、Keychain API Key、流式状态区分 |
 | **10** | **后端实质化** | **JWT 认证、PostgreSQL 持久化、Sync 真实实现、Apple Sign In、Docker** |
-| **11** | **简历技术栈补充（规划中）** | **RAG pgvector、GitHub Actions CI/CD、APNs 推送、Watch Complication** |
+| **11** | **RAG 语义检索 + 技术栈补充** | **pgvector 语义检索 ✅、GitHub Actions CI/CD（待）、APNs 推送（待）、Watch Complication（待）** |
+
+---
+
+## Phase 11 — RAG 语义检索 ✅ 已完成
+
+**目标**：将 Chat 的上下文注入从"全量规则塞入"升级为"语义向量检索"，让 LLM 教练能回答跨时间窗口的历史问题。
+
+### 11A: pgvector 表与迁移
+
+| 改动 | 文件 | 说明 |
+|------|------|------|
+| MemoryEmbedding ORM 模型 | `db/models.py` | 新增表：id / user_id / source_type / source_id / content / embedding(VECTOR(1536)) |
+| pgvector 迁移 | `alembic/versions/0002_pgvector_rag.py` | CREATE EXTENSION vector + ivfflat cosine 索引（100 lists） |
+| 依赖追加 | `requirements.txt` | +pgvector +openai |
+
+**6 种检索源**：pattern / intervention / feedback / experiment / recommendation / review
+
+### 11B: Embedding + RAG API
+
+| 改动 | 文件 | 说明 |
+|------|------|------|
+| EmbeddingService | `rag/embedding_service.py` | OpenAI text-embedding-3-small（1536 维），batch + semaphore 并发控制，content_hash 去重 |
+| RAG 路由 | `rag/routes.py` | POST /v1/rag/search（pgvector cosine 相似度 + ILIKE text fallback）、POST /v1/rag/index（batch upsert） |
+| Config 扩展 | `config.py` | +openai_api_key 配置项 |
+| Router 注册 | `main.py` | 注册 rag_router |
+
+**数据流**：用户消息 → embedding(query) → pgvector <=> cosine 排序 → top-3 → JSON 返回 → iOS 注入 System Prompt
+
+### 11C: iOS Core — RAGService
+
+| 改动 | 文件 | 说明 |
+|------|------|------|
+| RAGService | `RAG/RAGService.swift` | 双级检索：HTTPRAGClient（后端 pgvector）→ LocalRAGClient（actor token 匹配 fallback）→ 空 |
+| 模型 | 同上 | RAGSearchResult / RAGSearchResponse / MemoryIndexItem |
+| HTTPRAGClient | 同上 | 调用 /v1/rag/search + /v1/rag/index，Bearer token 认证 |
+| LocalRAGClient | 同上 | Actor 线程安全，内存索引最多 200 条，token 匹配评分 |
+| RAGService | 同上 | configureBackend() / search() / index() / resetLocal()，backend + local 结果去重合并 |
+
+### 11D: iOS App — Chat 集成
+
+| 改动 | 文件 | 说明 |
+|------|------|------|
+| ragService 属性 | `ChatViewModel.swift` | 新增 RAGService 实例 |
+| RAG 检索 | `ChatViewModel.swift` | sendMessage 前 `await ragService.search(query, topK: 3)` |
+| 格式化注入 | `ChatViewModel.swift` | `formatRAGResults()` → 中英双语 prompt 片段 → 追加到 System Prompt 末尾 |
+| 索引接口 | `ChatViewModel.swift` | `indexMemoryForRAG(sourceType, sourceId, content)` 供外部调用 |
 
 ---
 
