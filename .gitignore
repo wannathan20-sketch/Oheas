@@ -1,11 +1,16 @@
 .build/
 .derivedData/
 DerivedData/
-*.xcuserdata/
+**/xcuserdata/
 *.xcuserstate
 .DS_Store
+.swiftpm/
 deepseek.env
 OHeas.xcodeproj/xcshareddata/xcschemes/
+
+# Local files
+loggg.md
+.claude/settings.local.json
 
 # Backend
 backend/.env
