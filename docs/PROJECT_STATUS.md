@@ -1,6 +1,6 @@
 # OHeas 项目状态
 
-> 最后更新：2026-06-13（Phase 23 设置 IA 重构 ✅ + Phase 22 品牌 ✅ + Phase 21 趋势 ✅ + 国际化 & UI 警告修复 ✅ + 85 tests passed + BUILD SUCCEEDED）
+> 最后更新：2026-06-13（Phase 24 真机验证 Phase 1 ✅ + Phase 23 设置 IA 重构 ✅ + 85 tests passed + 真机 Debug BUILD SUCCEEDED）
 
 ## 一句话定位
 
@@ -572,7 +572,10 @@ Fail:   0 ✅
 6. **SafetyGuardrail L2 依赖 LLM 可用性**：LLM 不可用时自动 fallback 到 L1
 7. **APNs 代码已写但未合入 main**：APNs（backend + iOS）已实现但仍在 feature branch，需 Apple Developer 创建 APNs Key + 合入 main
 8. **流式输出不兼容 structured JSON schema**：流式模式下移除 `response_format: json_object`，改用 prompt 指令约束 JSON 输出
-9. **本机 `xcodebuild test` 需复跑**：2026-06-12 本地执行时已完成编译和签名，但模拟器测试宿主 launch 阶段卡住，人工中断为 `TEST INTERRUPTED`；`xcodebuild build` 已确认通过，完整测试建议在干净模拟器/CI 环境复跑
+9. **真机 HealthKit 数据量不足**：Apple Watch 新配对或未长期佩戴时，过去 30 天仅有少量天有数据；已修复 `HKError.Code.noData` → 空数据处理，但首次用户体验仍需基线引导（已实现，待真机验证效果）
+10. **OHeasViewModel 子 VM 状态传播**：已修复 `objectWillChange` 转发（Combine sink），需确认真机上 onboarding 完成→主界面切换正常
+11. **`xcodebuild test` 真机不可用**：模拟器可用但有时卡住；CI (GitHub Actions) 已配置并验证通过
+12. **`instruments` 命令在新版 Xcode 中已移除**：真机安装需用 `devicectl` 或 Xcode GUI
 
 ---
 
@@ -663,11 +666,12 @@ docker compose up -d                    # API + DB
 | **P0** | **Phase 21 — 时间轴 & 历史视图** | **1 天** | **✅ 已完成** |
 | **P0** | **Phase 22 — 品牌 & 启动优化** | **0.5 天** | **✅ 已完成** |
 | **P0** | **Phase 23 — 设置 IA 重构** | **0.5 天** | **✅ 已完成** |
+| **P0** | **Phase 24 — 真机验证 Phase 1** | **1 天** | **✅ 已完成** |
 | **P1** | **部署 Backend 到 Zeabur / VPS** | **0.5 天** | **代码就绪** |
 | **P1** | **Apple Developer 配置 Sign in with Apple Service ID** | **0.5 天** | **代码就绪，待 Web 配置** |
 | **P2** | **APNs 远程推送 + 异常告警** | **3 天** | **代码就绪，待合入 main** |
 | **P2** | **Watch Complication（表盘身体预算环）** | **2 天** | **待实现** |
-| P2 | 真机端到端验证（17 步 Checklist） | 1 天 | 待执行 |
+| P2 | 真机端到端验证 Phase 2（数据链路 + 冒烟测试） | 1 天 | 待执行 |
 | P3 | 多语言扩展 / Oura Ring 集成 / 离线 LLM | — | 待开始 |
 
 ### 已完成 Phase 总览
@@ -692,6 +696,7 @@ docker compose up -d                    # API + DB
 | **21** | **时间轴 & 历史视图** ✅ | **ScoreHistoryChart（30天可交互趋势图+拖拽+5日均线）、DayCard（紧凑日卡片）、DayDetailSheet（日详情sheet）、HistoryViewModel（滚动基线逐日评分）、HistoryTabView（第5Tab，Tab 名从「历史」→「趋势」）** |
 | **22** | **品牌 & 启动优化** ✅ | **OHeasLogo（渐变环形 H 标识）、LaunchSplashView（品牌启动过渡页+「正在唤醒…」加载提示）、OnboardingView 品牌 Hero + 单步翻页式流程 + 步骤 Pills** |
 | **23** | **设置 IA 重构** ✅ | **iOS 原生钻取模式、语言列表选择、隐私载荷预览移除、`#if DEBUG` 编译时守卫开发者工具** |
+| **24** | **真机验证 Phase 1** ✅ | **4 项 Bug 修复（Onboarding 无响应/权限页假拒绝/HealthKit Store 共享/noData 容错）、架构加固、仓库清理** |
 
 ---
 
@@ -812,6 +817,67 @@ Hero (Logo + pills) 始终可见
 
 - 开发者工具由 `#if DEBUG` 编译时守卫，Release/TestFlight 完全不可见，非运行时 toggle
 - 隐私载荷预览已从用户界面移除
+
+---
+
+## Phase 24 — 真机验证 Phase 1 ✅ 已完成 (2026-06-13)
+
+**目标**：在 iPhone 15 Pro Max 真机上编译安装，修复阻塞问题，验证 HealthKit 数据链路。
+
+**设备**：wan的iPhone (iPhone 15 Pro Max, iPhone16,2)，已配对 Apple Watch。
+
+### 24A: 构建与签名
+
+| 环节 | 结果 |
+|------|------|
+| `xcodebuild build -destination "id=..." -configuration Release` | ✅ BUILD SUCCEEDED |
+| `xcodebuild build -destination "id=..." -configuration Debug` | ✅ BUILD SUCCEEDED |
+| 签名 | ✅ Apple Development + iOS Team Provisioning Profile |
+| Entitlements (HealthKit) | ✅ `com.apple.developer.healthkit` = true |
+
+### 24B: 真机 Bug 修复（4 项）
+
+| # | 问题 | 根因 | 修复 |
+|---|------|------|------|
+| 1 | **Onboarding「开始使用 OHeas」无反应** | `OHeasViewModel` 未转发子 VM 的 `objectWillChange`；`AppRootView` 感知不到 `hasCompletedOnboarding` 变化 | 在 `OHeasViewModel.init()` 中用 Combine `sink` 订阅全部 8 个子 VM 的 `objectWillChange`，转发到 `self.objectWillChange.send()` |
+| 2 | **设置 → 健康权限页全显示「已拒绝」** | `HKHealthStore.authorizationStatus(for:)` 只能检查写入权限；OHeas 只用读取 → 永远返回 `.sharingDenied`。且权限页创建了新的 `HKHealthStore` 实例 | 重写 `HealthPermissionRecoveryView`：改为展示 `DataQualityReport.perMetricStatus` 的实际数据覆盖情况（有数据/部分数据/无数据），这是 Apple 允许检测且对用户更有意义的信息 |
+| 3 | **真机 Today 页仍显示模拟数据** | 每次 `HealthKitReader()` 创建新的 `HKHealthStore` 实例，Apple 要求复用单一实例 | `HealthDataViewModel` 持有共享 `HKHealthStore`，传入 `HealthKitReader`；在 fetch 前预调用 `requestAuthorization` |
+| 4 | **HealthKit 查询抛出 "No data available" → 降级 mock** | `HKStatisticsQuery` 对无数据的日期范围抛出 `HKError.Code.noData`（code=11），导致整个 30 天 fetch 失败 | 全部 4 个查询方法（sleepSegments / averageQuantitySamples / cumulativeQuantity / workouts）在 error 处理中判断 `hkError.code == 11`，返回空数组/`nil` 而非 throw，让有天数据的天正常加载 |
+
+### 24C: 架构改进
+
+| 改动 | 文件 | 说明 |
+|------|------|------|
+| **共享 HKHealthStore** | `HealthDataViewModel.swift` 🔧 | 新增 `private let healthStore = HKHealthStore()`，单例复用 |
+| **预授权** | `HealthDataViewModel.swift` 🔧 | `loadHealthData()` 开头用共享 store 异步调用 `requestAuthorization(toShare:read:)` |
+| **noData 优雅降级** | `HealthKitReader.swift` 🔧 | 4 处查询的 error handler 增加 `HKErrorDomain code 11` 判断 |
+| **objectWillChange 转发** | `OHeasViewModel.swift` 🔧 | 初始化时 sink 8 个子 VM，消除所有计算属性代理的状态不同步问题 |
+| **健康权限页重写** | `HealthPermissionRecoveryView.swift` 🔄 | 从 `authorizationStatus(for:)` → 数据覆盖展示，接受 `dataSource` + `perMetricStatus` 参数 |
+| **诊断横幅** | `TodayView.swift` 🔧 | mock 模式下顶部橙色横幅显示 HealthKit 错误详情 |
+| **HealthDataSource.mock 常驻** | `AppLanguage.swift` 🔧 | 移除 `#if DEBUG` 守卫，Release 构建也能正确展示 mock/fallback 状态 |
+| **healthKitError 属性** | `HealthDataViewModel.swift` 🔧 | 新增 `@Published var healthKitError: String?` 供诊断 |
+
+### 24D: 仓库清理
+
+| 改动 | 说明 |
+|------|------|
+| 删除 `loggg.md`（112KB） | 对话日志草稿，不应提交 |
+| 删除 `.swiftpm/` | SwiftPM 构建产物 |
+| 删除 `xcuserdata` 文件 | Xcode 用户特定数据 |
+| 删除 `.claude/settings.local.json` | 含本机绝对路径 |
+| 加固 `.gitignore` | 新增 `.swiftpm/`、`loggg.md`、`**/xcuserdata/` |
+
+### 24E: 验证状态
+
+| 检查项 | 结果 |
+|--------|------|
+| `swift build` | ✅ Build complete |
+| `swift test` (85 tests) | ✅ 85/85 passed |
+| `xcodebuild build` (真机 Debug) | ✅ BUILD SUCCEEDED |
+| `xcodebuild build` (真机 Release) | ✅ BUILD SUCCEEDED |
+| `preflight_release_check.sh` | ✅ 18 Pass / 1 Warn / 0 Fail |
+| HealthKit 授权弹窗 | ✅ 出现在启动画面之上 |
+| HealthKit 数据读取 | ✅ 处理了 `noData` 错误，待用户确认真实数据是否加载 |
 
 ---
 
