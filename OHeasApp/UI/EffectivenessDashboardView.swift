@@ -66,26 +66,6 @@ struct EffectivenessDashboardView: View {
     }
 }
 
-private struct MetricTile: View {
-    let title: String
-    let value: String
-    let icon: String
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Label(title, systemImage: icon)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            Text(value)
-                .font(.title2.weight(.semibold))
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding()
-        .background(.background)
-        .clipShape(RoundedRectangle(cornerRadius: 8))
-    }
-}
-
 private struct SectionCard<Content: View>: View {
     let title: String
     @ViewBuilder var content: Content

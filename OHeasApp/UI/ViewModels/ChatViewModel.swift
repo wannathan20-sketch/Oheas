@@ -156,7 +156,7 @@ final class ChatViewModel: ObservableObject {
 
     // MARK: - Conversation Starters
 
-    func generateStarters(context: AgentContext?, preferredLanguage: String = "en") {
+    func generateStarters(context: AgentContext?, preferredLanguage: String = "zh") {
         let zh = preferredLanguage == "zh"
         var starters: [ConversationStarter] = []
 
@@ -201,8 +201,9 @@ final class ChatViewModel: ObservableObject {
 
     // MARK: - System Prompt
 
-    func buildSystemPrompt(context: AgentContext?, preferredLanguage: String = "en", userQuery: String = "") -> String {
+    func buildSystemPrompt(context: AgentContext?, preferredLanguage: String = "zh", userQuery: String = "") -> String {
         let zh = preferredLanguage == "zh"
+        let lang = AppLanguage(rawValue: preferredLanguage) ?? .chinese
         var prompt = ""
 
         if zh {
@@ -327,7 +328,7 @@ final class ChatViewModel: ObservableObject {
             let label = conf == .high ? "高" : (conf == .medium ? "中" : "低")
             prompt += "- 数据置信度：\(label)\n"
             if conf == .low, let reason = ctx.dataQuality.missingReasons.first {
-                prompt += "  （注意：数据不完整，\(reason)，给出建议时要更保守）\n"
+                prompt += "  （注意：数据不完整，\(ChatFormatting.localizedMissingReason(reason, language: lang))，给出建议时要更保守）\n"
             }
         } else {
             prompt += "- Data confidence: \(conf.rawValue)\n"
@@ -394,7 +395,7 @@ final class ChatViewModel: ObservableObject {
 
     // MARK: - Send Message
 
-    func sendMessage(_ text: String, context: AgentContext?, aiEnabled: Bool, preferredLanguage: String = "en") {
+    func sendMessage(_ text: String, context: AgentContext?, aiEnabled: Bool, preferredLanguage: String = "zh") {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, streamState == .idle else { return }
 
@@ -417,7 +418,7 @@ final class ChatViewModel: ObservableObject {
         }
     }
 
-    func retryLastMessage(context: AgentContext?, aiEnabled: Bool, preferredLanguage: String = "en") {
+    func retryLastMessage(context: AgentContext?, aiEnabled: Bool, preferredLanguage: String = "zh") {
         guard streamState == .idle, let lastUser = currentSession?.messages.last(where: { $0.role == .user }) else { return }
         streamState = .connecting
         streamingText = ""
@@ -427,7 +428,7 @@ final class ChatViewModel: ObservableObject {
         }
     }
 
-    private func streamCoachResponse(userText: String, context: AgentContext?, aiEnabled: Bool, preferredLanguage: String = "en") async {
+    private func streamCoachResponse(userText: String, context: AgentContext?, aiEnabled: Bool, preferredLanguage: String = "zh") async {
         let config = OpenAIAppConfiguration.load()
         let windowManager = ContextWindowManager()
 
@@ -616,7 +617,7 @@ final class ChatViewModel: ObservableObject {
 
     // MARK: - Context-Aware Fallback
 
-    private func localFallbackResponse(to userText: String, context: AgentContext?, preferredLanguage: String = "en") -> String {
+    private func localFallbackResponse(to userText: String, context: AgentContext?, preferredLanguage: String = "zh") -> String {
         let lowercased = userText.lowercased()
         let zh = preferredLanguage == "zh"
 
@@ -714,14 +715,53 @@ final class ChatViewModel: ObservableObject {
         return type.rawValue
     }
 
+    @available(*, deprecated, message: "Use ChatFormatting.localizedMissingReason(_:language:)")
+    private func localizedMissingReason(_ reason: String) -> String {
+        let lower = reason.lowercased()
+        if lower.contains("sleep data has been missing") && lower.contains("consecutive days") {
+            return "睡眠数据已连续多天缺失，请检查 Apple Watch 睡眠设置或夜间佩戴情况"
+        }
+        if lower.contains("recovery data has been missing") && lower.contains("consecutive days") {
+            return "恢复数据已连续多天缺失，建议睡眠时佩戴 Apple Watch 以建立可靠基线"
+        }
+        if lower.contains("apple watch data may still be syncing") {
+            return "Apple Watch 数据可能仍在同步"
+        }
+        if lower.contains("sleep data is missing") {
+            return "睡眠数据缺失"
+        }
+        if lower.contains("hrv data is missing") {
+            return "HRV 数据缺失"
+        }
+        if lower.contains("resting heart rate is missing") {
+            return "静息心率缺失"
+        }
+        if lower.contains("step count is missing") {
+            return "步数数据缺失"
+        }
+        if lower.contains("active energy is missing") {
+            return "活动能量数据缺失"
+        }
+        if lower.contains("exercise minutes are missing") {
+            return "运动分钟数缺失"
+        }
+        if lower.contains("workout records could not be queried") {
+            return "无法读取运动记录"
+        }
+        if lower.contains("aggregated metrics hidden by privacy settings") {
+            return "聚合指标已被隐私设置隐藏"
+        }
+        return reason
+    }
+
     // MARK: - RAG
 
     /// Format RAG search results as a prompt segment for the LLM.
     private func formatRAGResults(_ results: [RAGSearchResult], preferredLanguage: String) -> String {
         guard !results.isEmpty else { return "" }
         let zh = preferredLanguage == "zh"
-        var text = zh ? "\n\n## 相关历史记忆（RAG 检索）\n以下是从用户历史中检索到的相关信息，可在回答时自然引用：\n"
-            : "\n\n## Related Memories (RAG Retrieved)\nThe following are relevant memories from the user's history. Reference them naturally:\n"
+        var text = zh ? "\n\n## 相关历史记忆\n以下是从用户历史中检索到的相关信息，可在回答时自然引用：\n"
+            : "\n\n## Related Memories\nRelevant memories from the user's history. Reference them naturally:\n"
         for (i, r) in results.enumerated() {
             text += "\(i + 1). [\(r.sourceLabel)] \(r.content.prefix(300))\n"
         }

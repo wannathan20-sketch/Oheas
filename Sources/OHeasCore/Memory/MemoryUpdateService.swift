@@ -23,14 +23,16 @@ public struct MemoryUpdateService: Sendable {
         feedbackHistory: [DailyFeedback],
         verificationReports: [VerificationReport],
         recommendationHistory: [CoachRecommendation],
-        baseline: HealthBaseline
+        baseline: HealthBaseline,
+        preferredLanguage: String = "en"
     ) throws -> (memory: UserMemory, candidates: PatternMiningResult) {
         let candidates = miner.mine(
             recentMetrics: recentMetrics,
             feedbackHistory: feedbackHistory,
             verificationReports: verificationReports,
             recommendationHistory: recommendationHistory,
-            baseline: baseline
+            baseline: baseline,
+            preferredLanguage: preferredLanguage
         )
 
         var memory = try store.loadMemory()

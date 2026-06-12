@@ -39,7 +39,7 @@ struct PlanView: View {
                                 .font(.footnote)
                                 .foregroundStyle(.secondary)
                             ForEach(plan.days) { day in
-                                planCard(day, title: day.date.formatted(date: .abbreviated, time: .omitted), highlighted: false)
+                                planCard(day, title: language.formatDate(day.date, dateStyle: .medium), highlighted: false)
                             }
                         }
                     }
@@ -70,7 +70,7 @@ struct PlanView: View {
 
             HStack {
                 Label("\(day.estimatedDurationMinutes) \(language.text(.minUnit))", systemImage: "timer")
-                Label(day.intensity.rawValue.replacingOccurrences(of: "_", with: " "), systemImage: "gauge")
+                Label(language.planIntensity(day.intensity), systemImage: "gauge")
             }
             .font(.caption)
             .foregroundStyle(.secondary)

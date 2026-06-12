@@ -8,12 +8,18 @@
 
 
 import Foundation
+import SwiftUI
 import OHeasCore
 
 @MainActor
 final class MemoryViewModel: ObservableObject {
     @Published var userMemory: UserMemory = UserMemory()
     @Published var patternCandidates: PatternMiningResult = PatternMiningResult()
+
+    @AppStorage("oheas.language") private var languageRawValue = AppLanguage.chinese.rawValue
+    private var preferredLanguage: String {
+        (AppLanguage(rawValue: languageRawValue) ?? .chinese).rawValue
+    }
 
     private let memoryStore = MemoryStore(fileURL: OHeasStorageURLs.memory)
     private let errorReporter: ErrorReporter
@@ -45,7 +51,8 @@ final class MemoryViewModel: ObservableObject {
                 feedbackHistory: feedbackHistory,
                 verificationReports: verificationReports,
                 recommendationHistory: recommendationHistory,
-                baseline: baseline
+                baseline: baseline,
+                preferredLanguage: preferredLanguage
             )
             userMemory = result.memory
             patternCandidates = result.candidates

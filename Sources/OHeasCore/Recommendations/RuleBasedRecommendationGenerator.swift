@@ -163,6 +163,22 @@ public struct RuleBasedRecommendationGenerator: Sendable {
 
     private func followupQuestion(for quality: DataQualityReport, zh: Bool) -> String? {
         guard quality.overallConfidence == .low || quality.shouldAskUserFollowup else { return nil }
+        if zh {
+            let missingCritical = quality.perMetricStatus.filter { metric, status in
+                [.sleepHours, .hrv, .restingHeartRate].contains(metric) && status == .missing
+            }.map(\.key)
+
+            if missingCritical.contains(.sleepHours) && missingCritical.contains(.hrv) {
+                return "昨晚睡觉时有正常佩戴 Apple Watch 吗？"
+            }
+            if missingCritical.contains(.sleepHours) {
+                return "昨晚是否有影响睡眠记录的特殊情况？"
+            }
+            if missingCritical.contains(.hrv) || missingCritical.contains(.restingHeartRate) {
+                return "昨晚和今早 Apple Watch 是否正常佩戴？"
+            }
+            return "Apple 健康里是否有活动或训练相关权限未开启？"
+        }
         return quality.suggestedFollowupQuestion
     }
 }

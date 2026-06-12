@@ -42,10 +42,11 @@ OHeas provides lifestyle coaching only. It does not diagnose disease, prescribe 
 
 ## Known Limitations
 
-- Backend auth is a stub until a production JWT provider is configured.
+- Backend JWT + Apple Sign In code is implemented, but production deployment and real-device end-to-end sync are not yet verified.
 - Sync conflict strategy is last-write-wins, with local latest privacy settings preferred.
 - Effectiveness reports are observational and not medical evidence.
 - Simulator HealthKit data is limited; demo scenarios are provided.
+- Latest local `xcodebuild build` passes on iPhone 17 simulator (iOS 26.5); `xcodebuild test` compiled and entered Testing started, but the simulator test host launch hung and was manually interrupted. Re-run full simulator tests in a clean simulator or CI before Archive.
 
 ## Safety Boundaries
 

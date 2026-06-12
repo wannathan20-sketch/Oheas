@@ -37,34 +37,37 @@ public struct PatternMiner: Sendable {
         feedbackHistory: [DailyFeedback],
         verificationReports: [VerificationReport],
         recommendationHistory: [CoachRecommendation],
-        baseline: HealthBaseline
+        baseline: HealthBaseline,
+        preferredLanguage: String = "en"
     ) -> PatternMiningResult {
+        let zh = preferredLanguage == "zh"
         guard recentMetrics.count >= 5 else {
             return PatternMiningResult()
         }
 
         var patterns: [KnownPattern] = []
-        if let sleepPattern = sleepRecoveryPattern(recentMetrics: recentMetrics, feedbackHistory: feedbackHistory, baseline: baseline) {
+        if let sleepPattern = sleepRecoveryPattern(recentMetrics: recentMetrics, feedbackHistory: feedbackHistory, baseline: baseline, zh: zh) {
             patterns.append(sleepPattern)
         }
-        if let activityPattern = highActivityRecoveryPattern(recentMetrics: recentMetrics, baseline: baseline) {
+        if let activityPattern = highActivityRecoveryPattern(recentMetrics: recentMetrics, baseline: baseline, zh: zh) {
             patterns.append(activityPattern)
         }
-        if let coveragePattern = lowDataCoveragePattern(recentMetrics: recentMetrics) {
+        if let coveragePattern = lowDataCoveragePattern(recentMetrics: recentMetrics, zh: zh) {
             patterns.append(coveragePattern)
         }
 
         return PatternMiningResult(
             patterns: patterns,
-            successfulInterventions: successfulInterventions(reports: verificationReports, recommendations: recommendationHistory),
-            ineffectiveInterventions: ineffectiveInterventions(reports: verificationReports, feedback: feedbackHistory, recommendations: recommendationHistory)
+            successfulInterventions: successfulInterventions(reports: verificationReports, recommendations: recommendationHistory, zh: zh),
+            ineffectiveInterventions: ineffectiveInterventions(reports: verificationReports, feedback: feedbackHistory, recommendations: recommendationHistory, zh: zh)
         )
     }
 
     private func sleepRecoveryPattern(
         recentMetrics: [DailyHealthMetrics],
         feedbackHistory: [DailyFeedback],
-        baseline: HealthBaseline
+        baseline: HealthBaseline,
+        zh: Bool
     ) -> KnownPattern? {
         guard let baselineSleep = baseline.averageSleepHours else { return nil }
         var examples: [String] = []
@@ -79,14 +82,18 @@ public struct PatternMiner: Sendable {
             let lowEnergy = feedbackHistory.first { calendar.isDate($0.date, inSameDayAs: next.date) }?.subjectiveEnergy ?? 10
 
             if hrvWorse || rhrWorse || lowEnergy <= 4 {
-                examples.append("Short sleep on \(day.date.formatted(date: .abbreviated, time: .omitted)) was followed by softer recovery signals.")
+                let date = day.date.formatted(date: .abbreviated, time: .omitted)
+                examples.append(zh
+                    ? "\(date) 睡眠偏短后，次日恢复信号偏弱。"
+                    : "Short sleep on \(date) was followed by softer recovery signals."
+                )
             }
         }
 
         guard examples.count >= 2 else { return nil }
         return KnownPattern(
-            title: "Short sleep may affect next-day recovery",
-            description: "Short sleep was followed by softer next-day recovery signals (HRV, RHR, or energy).",
+            title: zh ? "睡眠偏短可能影响次日恢复" : "Short sleep may affect next-day recovery",
+            description: zh ? "睡眠偏短后，次日恢复信号可能偏弱，包括 HRV、静息心率或主观精力。" : "Short sleep was followed by softer next-day recovery signals (HRV, RHR, or energy).",
             relatedMetrics: ["sleepHours", "hrv", "restingHeartRate", "subjectiveEnergy"],
             confidence: examples.count >= 3 ? .medium : .low,
             evidenceCount: examples.count,
@@ -96,7 +103,7 @@ public struct PatternMiner: Sendable {
         )
     }
 
-    private func highActivityRecoveryPattern(recentMetrics: [DailyHealthMetrics], baseline: HealthBaseline) -> KnownPattern? {
+    private func highActivityRecoveryPattern(recentMetrics: [DailyHealthMetrics], baseline: HealthBaseline, zh: Bool) -> KnownPattern? {
         guard let baselineSteps = baseline.averageSteps else { return nil }
         var examples: [String] = []
 
@@ -110,14 +117,18 @@ public struct PatternMiner: Sendable {
             let hrvWorse = worse(next.hrv, than: baseline.averageHRV, lowerIsWorse: true, threshold: 0.85)
             let rhrWorse = worse(next.restingHeartRate, than: baseline.averageRestingHeartRate, lowerIsWorse: false, absoluteThreshold: 5)
             if hrvWorse || rhrWorse {
-                examples.append("Higher activity on \(day.date.formatted(date: .abbreviated, time: .omitted)) was followed by softer recovery signals.")
+                let date = day.date.formatted(date: .abbreviated, time: .omitted)
+                examples.append(zh
+                    ? "\(date) 活动量较高后，次日恢复信号偏弱。"
+                    : "Higher activity on \(date) was followed by softer recovery signals."
+                )
             }
         }
 
         guard examples.count >= 2 else { return nil }
         return KnownPattern(
-            title: "High activity may need longer recovery",
-            description: "Higher activity load was followed by softer recovery signals the next day.",
+            title: zh ? "高活动量后可能需要更长恢复" : "High activity may need longer recovery",
+            description: zh ? "较高活动负荷后，次日恢复信号可能偏弱。" : "Higher activity load was followed by softer recovery signals the next day.",
             relatedMetrics: ["steps", "workouts", "hrv", "restingHeartRate"],
             confidence: examples.count >= 3 ? .medium : .low,
             evidenceCount: examples.count,
@@ -127,7 +138,7 @@ public struct PatternMiner: Sendable {
         )
     }
 
-    private func lowDataCoveragePattern(recentMetrics: [DailyHealthMetrics]) -> KnownPattern? {
+    private func lowDataCoveragePattern(recentMetrics: [DailyHealthMetrics], zh: Bool) -> KnownPattern? {
         let last7 = Array(recentMetrics.suffix(7))
         let missingCount = last7.filter { day in
             day.perMetricStatus[.sleepHours] == .missing || day.perMetricStatus[.hrv] == .missing
@@ -135,20 +146,21 @@ public struct PatternMiner: Sendable {
 
         guard missingCount >= 3 else { return nil }
         return KnownPattern(
-            title: "Recovery data coverage may be limiting advice",
-            description: "Sleep or HRV data coverage was insufficient in the last 7 days, reducing recovery confidence.",
+            title: zh ? "恢复数据覆盖不足可能影响建议" : "Recovery data coverage may be limiting advice",
+            description: zh ? "最近 7 天睡眠或 HRV 数据覆盖不足，会降低恢复判断的置信度。" : "Sleep or HRV data coverage was insufficient in the last 7 days, reducing recovery confidence.",
             relatedMetrics: ["sleepHours", "hrv", "dataQuality"],
             confidence: .medium,
             evidenceCount: missingCount,
             firstObservedAt: last7.first?.date ?? Date(),
             lastObservedAt: last7.last?.date ?? Date(),
-            examples: ["\(missingCount) of the last 7 days had missing sleep or HRV data."]
+            examples: [zh ? "最近 7 天有 \(missingCount) 天缺少睡眠或 HRV 数据。" : "\(missingCount) of the last 7 days had missing sleep or HRV data."]
         )
     }
 
     private func successfulInterventions(
         reports: [VerificationReport],
-        recommendations: [CoachRecommendation]
+        recommendations: [CoachRecommendation],
+        zh: Bool
     ) -> [InterventionMemory] {
         reports.compactMap { report in
             guard report.outcome == .likelyHelped,
@@ -156,7 +168,7 @@ public struct PatternMiner: Sendable {
             else { return nil }
             return InterventionMemory(
                 intervention: recommendation.recommendation,
-                observedEffect: "This intervention was followed by improvement in at least two metrics the next day.",
+                observedEffect: zh ? "这项行动后，次日至少两个指标有所改善。" : "This intervention was followed by improvement in at least two metrics the next day.",
                 targetMetrics: recommendation.tomorrowVerification.map(\.metric),
                 confidence: .low,
                 evidenceCount: 1,
@@ -168,7 +180,8 @@ public struct PatternMiner: Sendable {
     private func ineffectiveInterventions(
         reports: [VerificationReport],
         feedback: [DailyFeedback],
-        recommendations: [CoachRecommendation]
+        recommendations: [CoachRecommendation],
+        zh: Bool
     ) -> [InterventionMemory] {
         let completedIds = Set(feedback.filter { $0.adherence == .completed }.map(\.recommendationId))
         let grouped = Dictionary(grouping: reports.filter { completedIds.contains($0.recommendationId) }) { report in
@@ -181,7 +194,7 @@ public struct PatternMiner: Sendable {
             guard !helped else { return nil }
             return InterventionMemory(
                 intervention: intervention,
-                observedEffect: "This intervention was completed multiple times without consistent improvement.",
+                observedEffect: zh ? "这项行动已多次完成，但没有出现稳定改善。" : "This intervention was completed multiple times without consistent improvement.",
                 targetMetrics: ["sleepHours", "hrv", "restingHeartRate", "subjectiveEnergy"],
                 confidence: .low,
                 evidenceCount: reports.count,

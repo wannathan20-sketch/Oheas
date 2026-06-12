@@ -8,6 +8,7 @@
 
 
 import Foundation
+import SwiftUI
 import OHeasCore
 
 @MainActor
@@ -25,6 +26,11 @@ final class RecommendationViewModel: ObservableObject {
     @Published var feedbackSoreness: Double = 4
     @Published var feedbackStress: Double = 4
     @Published var feedbackNote: String = ""
+
+    @AppStorage("oheas.language") private var languageRawValue = AppLanguage.chinese.rawValue
+    private var preferredLanguage: String {
+        (AppLanguage(rawValue: languageRawValue) ?? .chinese).rawValue
+    }
 
     // Streaming state
     @Published var isStreaming: Bool = false
@@ -273,7 +279,8 @@ final class RecommendationViewModel: ObservableObject {
             feedback: yesterdayFeedback,
             today: today,
             baseline: baseline,
-            dataQuality: quality
+            dataQuality: quality,
+            preferredLanguage: preferredLanguage
         )
         verificationReport = report
         do {
@@ -299,6 +306,82 @@ final class RecommendationViewModel: ObservableObject {
             errorReporter.record(category: .llm, message: "Failed to build prompt payload: \(error.localizedDescription)")
         }
         updatePrivacyPreview(context: context)
+    }
+
+    // MARK: - Follow-Up Chips
+
+    func generateChips(from result: RecommendationResult, quality: DataQualityReport) -> [CoachFollowUpChip] {
+        var chips: [CoachFollowUpChip] = []
+
+        let state = result.recommendation.state
+
+        // Always offer "Tell me more"
+        chips.append(CoachFollowUpChip(
+            labelKey: "askMoreDetails",
+            category: .details,
+            action: .askQuestion(
+                "The user is asking for more details about your recommendation: '\(result.recommendation.recommendation)'. Explain the evidence and reasoning in 2-3 sentences."
+            )
+        ))
+
+        // Recovery-related chip when recovery is low or there are concerning signals
+        if state == .recoveryLow || state == .overloaded {
+            chips.append(CoachFollowUpChip(
+                labelKey: "askRecoveryMeaning",
+                category: .recovery,
+                action: .askQuestion(
+                    "The user's recovery metrics are below baseline. Explain what this means in practical terms (energy, focus, workout safety) in 2-3 sentences."
+                )
+            ))
+        }
+
+        // Tomorrow plan chip for balanced/ready states
+        if state == .ready || state == .balanced {
+            chips.append(CoachFollowUpChip(
+                labelKey: "askTomorrowPlan",
+                category: .tomorrowPlan,
+                action: .askQuestion(
+                    "Based on today's health data and recommendation, suggest one concrete thing the user could do tomorrow to maintain or improve their state. Keep it to 2 sentences."
+                )
+            ))
+        }
+
+        // Historical validation chip when we have feedback data
+        if yesterdayFeedback != nil {
+            chips.append(CoachFollowUpChip(
+                labelKey: "askHistoricalValidation",
+                category: .historicalValidation,
+                action: .askQuestion(
+                    "The user wants to know if today's recommendation is similar to what worked for them before. Look at the current recommendation and briefly explain (2-3 sentences) how it connects to any known patterns or past successful interventions."
+                )
+            ))
+        }
+
+        // Limit to 4 chips max
+        return Array(chips.prefix(4))
+    }
+
+    func fetchInlineResponse(for chip: CoachFollowUpChip, context: AgentContext, aiEnabled: Bool) async -> CoachInlineResponse? {
+        // TODO: When LLMClientProtocol adds a lightweight chat method, wire up real LLM inline responses.
+        // For now, local fallback provides a quick answer while the "Discuss in Chat" chip handles complex queries.
+        return localInlineFallback(for: chip)
+    }
+
+    private func localInlineFallback(for chip: CoachFollowUpChip) -> CoachInlineResponse {
+        let fallbackText: String
+        switch chip.category {
+        case .recovery:
+            fallbackText = "Your recovery metrics (sleep, HRV, resting heart rate) reflect how well your body is adapting to recent stress. Lower values suggest prioritizing rest, while higher values mean you're ready for more activity. Check your sparkline trends to see the direction over the past week."
+        case .tomorrowPlan:
+            fallbackText = "Tomorrow's ideal plan depends on today's recovery score. If your score is good (70+), maintain your routine. If strained (below 55), consider a lighter day with more rest. Small consistent actions build lasting habits."
+        case .details:
+            fallbackText = "Each recommendation is based on your sleep, HRV, resting heart rate, activity, and subjective feedback. The confidence level reflects how complete your data is — more consistent wear leads to more personalized advice."
+        case .historicalValidation:
+            fallbackText = "Looking at your past patterns, consistent sleep and stress management have been the strongest predictors of good recovery days. Today's recommendation aligns with what has helped you feel better in the past."
+        case .general:
+            fallbackText = "This is a personalized suggestion based on your health data trends. Small daily actions — even 5 minutes of mindfulness or an extra glass of water — can compound into meaningful improvements over time."
+        }
+        return CoachInlineResponse(chipId: chip.id, responseText: fallbackText)
     }
 
     // MARK: - Private

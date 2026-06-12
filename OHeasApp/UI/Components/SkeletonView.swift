@@ -34,7 +34,7 @@ struct ShimmerEffect: ViewModifier {
                 .mask(content)
             )
             .onAppear {
-                withAnimation(.linear(duration: 1.5).repeatForever(autoreverses: false)) {
+                withAnimation(OhAnimation.shimmer) {
                     phase = 1
                 }
             }
@@ -58,7 +58,7 @@ struct SkeletonCard: View {
     }
 
     var body: some View {
-        RoundedRectangle(cornerRadius: 8)
+        RoundedRectangle(cornerRadius: Radius.small)
             .fill(Color(.systemGray5))
             .frame(height: height)
             .shimmer()
@@ -80,7 +80,7 @@ struct SkeletonSection: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             // Title skeleton
-            RoundedRectangle(cornerRadius: 4)
+            RoundedRectangle(cornerRadius: Radius.tiny)
                 .fill(Color(.systemGray4))
                 .frame(width: 120, height: 20)
                 .shimmer()
@@ -92,7 +92,7 @@ struct SkeletonSection: View {
         }
         .padding()
         .background(.background)
-        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .clipShape(RoundedRectangle(cornerRadius: Radius.small))
     }
 }
 

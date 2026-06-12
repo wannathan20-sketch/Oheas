@@ -23,7 +23,7 @@ struct AccountView: View {
             Section {
                 LabeledContent(language.text(.mode), value: modeText)
                 if let userId = viewModel.currentUserId {
-                    LabeledContent("User ID", value: userId.uuidString)
+                    LabeledContent(language.userIDLabel, value: userId.uuidString)
                         .font(.caption2.monospaced())
                         .foregroundStyle(.secondary)
                 }
@@ -37,7 +37,7 @@ struct AccountView: View {
                         Image(systemName: "apple.logo")
                             .font(.title2)
                         VStack(alignment: .leading, spacing: 2) {
-                            Text("Sign in with Apple")
+                            Text(language.signInWithAppleLabel)
                                 .font(.headline)
                             Text(language.text(.cloudSyncModeLabel))
                                 .font(.caption)

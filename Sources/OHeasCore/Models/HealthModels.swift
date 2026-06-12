@@ -382,6 +382,76 @@ public struct AgentContext: Codable, Equatable, Sendable {
     }
 }
 
+// MARK: - Body Budget Score (Phase 15 — North-Star Metric)
+
+/// Category label for the 0-100 Body Budget Score.
+/// 身体预算评分的分类标签。
+public enum BudgetCategory: String, Codable, Sendable {
+    case excellent   // 85-100
+    case good        // 70-84
+    case fair        // 55-69
+    case strained    // 35-54
+    case depleted    // 0-34
+}
+
+/// A single contributing factor to the Body Budget Score.
+/// 身体预算评分的单一贡献因子。
+public struct BudgetFactor: Codable, Equatable, Sendable {
+    public var metric: HealthMetric
+    /// Signed contribution value: positive = helped the score, negative = hurt it.
+    public var contribution: Double
+    /// Weight of this pillar in the overall score (0.0-1.0).
+    public var weight: Double
+    /// Human-readable explanation of this factor's impact.
+    public var explanation: String
+
+    public init(metric: HealthMetric, contribution: Double, weight: Double, explanation: String) {
+        self.metric = metric
+        self.contribution = contribution
+        self.weight = weight
+        self.explanation = explanation
+    }
+}
+
+/// The Body Budget Score — a 0-100 composite health-state metric aggregating
+/// recovery, activity, subjective feedback, and detected signals into a single
+/// north-star number (like Oura Readiness / Whoop Recovery).
+/// 身体预算评分 — 0-100 综合健康状态指标。
+public struct BodyBudgetScore: Codable, Equatable, Sendable {
+    /// 0-100 integer score.
+    public var value: Int
+    /// Semantic category derived from the score.
+    public var category: BudgetCategory
+    /// Top contributing factors (positive and negative).
+    public var factors: [BudgetFactor]
+    /// The recovery pillar subscore (0-100).
+    public var recoverySubscore: Double
+    /// The activity pillar subscore (0-100).
+    public var activitySubscore: Double
+    /// The subjective pillar subscore (0-100).
+    public var subjectiveSubscore: Double
+    /// The signal penalty (0 = no penalty, higher = more penalty).
+    public var signalPenalty: Double
+
+    public init(
+        value: Int,
+        category: BudgetCategory,
+        factors: [BudgetFactor] = [],
+        recoverySubscore: Double = 50,
+        activitySubscore: Double = 50,
+        subjectiveSubscore: Double = 50,
+        signalPenalty: Double = 0
+    ) {
+        self.value = value
+        self.category = category
+        self.factors = factors
+        self.recoverySubscore = recoverySubscore
+        self.activitySubscore = activitySubscore
+        self.subjectiveSubscore = subjectiveSubscore
+        self.signalPenalty = signalPenalty
+    }
+}
+
 // MARK: - Prompt Payload
 
 /// The assembled LLM prompt: system prompt + user context JSON.

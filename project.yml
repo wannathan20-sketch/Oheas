@@ -12,6 +12,8 @@ targets:
     platform: iOS
     sources:
       - OHeasApp
+      - OHeasApp/UI/Today
+      - OHeasApp/UI/History
     dependencies:
       - package: OHeasCore
     settings:

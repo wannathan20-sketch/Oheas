@@ -172,7 +172,7 @@ final class PlanViewModel: ObservableObject {
             )
             if after != before {
                 recentPlanAdjustments.insert(
-                    PlanAdjustment(date: today.date, beforeType: before.planType, afterType: after.planType, reason: after.adjustmentReason ?? "Adjusted based on today's data."),
+                    PlanAdjustment(date: today.date, beforeType: before.planType, afterType: after.planType, reason: after.adjustmentReason ?? automaticAdjustmentReason),
                     at: 0
                 )
                 plan.days[todayIndex] = after
@@ -262,7 +262,7 @@ final class PlanViewModel: ObservableObject {
         updated.planType = type
         updated.estimatedDurationMinutes = duration
         updated.status = .adjusted
-        updated.adjustmentReason = "Manually adjusted by user."
+        updated.adjustmentReason = manualAdjustmentReason
         updated.updatedAt = Date()
         do {
             try planStore.replaceDailyPlan(planId: plan.id, dailyPlan: updated)
@@ -313,6 +313,14 @@ final class PlanViewModel: ObservableObject {
 
     func setRecentMetrics(_ metrics: [DailyHealthMetrics]) {
         // Stored for weekly review use
+    }
+
+    private var automaticAdjustmentReason: String {
+        preferredLanguage == "zh" ? "已根据今天的数据调整。" : "Adjusted based on today's data."
+    }
+
+    private var manualAdjustmentReason: String {
+        preferredLanguage == "zh" ? "用户手动调整。" : "Manually adjusted by user."
     }
 }
 

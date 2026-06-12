@@ -22,9 +22,9 @@ struct SyncStatusView: View {
     var body: some View {
         Form {
             Section {
-                LabeledContent(language.text(.modeLabel), value: viewModel.syncState.mode.rawValue)
+                LabeledContent(language.text(.modeLabel), value: language.syncMode(viewModel.syncState.mode))
                 LabeledContent(language.text(.pendingLabel), value: "\(viewModel.syncState.pendingCount)")
-                LabeledContent(language.text(.lastSyncedLabel), value: viewModel.syncState.lastSyncedAt?.formatted(date: .abbreviated, time: .shortened) ?? language.text(.neverLabel))
+                LabeledContent(language.text(.lastSyncedLabel), value: viewModel.syncState.lastSyncedAt.map { language.formatDate($0, dateStyle: .medium, timeStyle: .short) } ?? language.text(.neverLabel))
                 if let error = viewModel.syncState.lastError {
                     Text(error)
                         .font(.footnote)

@@ -86,6 +86,14 @@ enum OHeasStorageURLs {
     static var chatMessages: URL {
         baseDirectory.appendingPathComponent("chat_messages.json")
     }
+
+    static var badges: URL {
+        baseDirectory.appendingPathComponent("badges.json")
+    }
+
+    static var streaks: URL {
+        baseDirectory.appendingPathComponent("streaks.json")
+    }
 }
 
 // MARK: - Backend Configuration

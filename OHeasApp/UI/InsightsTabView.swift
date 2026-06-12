@@ -75,7 +75,8 @@ struct InsightsTabView: View {
                     MetricComparisonRow(
                         comparison: comparison,
                         status: viewModel.todayMetrics?.perMetricStatus[comparison.metric] ?? .missing,
-                        language: language
+                        language: language,
+                        cardStyle: true
                     )
                 }
             }
@@ -190,118 +191,6 @@ struct InsightsTabView: View {
 
     private func percent(_ value: Double) -> String {
         "\(Int((value * 100).rounded()))%"
-    }
-}
-
-// MARK: - Sub-views
-
-private struct MetricComparisonRow: View {
-    let comparison: MetricComparison
-    let status: MetricStatus
-    let language: AppLanguage
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Label(title, systemImage: icon)
-                    .font(.subheadline.weight(.semibold))
-                Spacer()
-                Text(language.status(status))
-                    .font(.caption)
-                    .foregroundStyle(statusColor)
-            }
-
-            HStack(alignment: .firstTextBaseline) {
-                Text(value(comparison.todayValue))
-                    .font(.title3.weight(.semibold))
-                Text(comparison.unit)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                Spacer()
-                VStack(alignment: .trailing, spacing: 2) {
-                    Text("\(language.text(.baseline)) \(value(comparison.baselineValue))")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                    Text(deltaText)
-                        .font(.footnote.weight(.medium))
-                        .foregroundStyle(deltaColor)
-                }
-            }
-        }
-        .padding()
-        .background(.background)
-        .clipShape(RoundedRectangle(cornerRadius: 8))
-    }
-
-    private var title: String {
-        language.metric(comparison.metric)
-    }
-
-    private var icon: String {
-        switch comparison.metric {
-        case .sleepHours: "bed.double"
-        case .hrv: "waveform.path.ecg"
-        case .restingHeartRate: "heart"
-        case .steps: "figure.walk"
-        case .activeEnergyKcal: "flame"
-        case .exerciseMinutes: "timer"
-        case .workouts: "figure.run"
-        }
-    }
-
-    private var deltaText: String {
-        guard let absolute = comparison.absoluteDelta else { return language.text(.deltaUnavailable) }
-        if comparison.metric == .restingHeartRate {
-            return "\(absolute >= 0 ? "+" : "")\(absolute.formatted(.number.precision(.fractionLength(1)))) bpm"
-        }
-        guard let percent = comparison.percentageDelta else {
-            return "\(absolute >= 0 ? "+" : "")\(absolute.formatted(.number.precision(.fractionLength(1))))"
-        }
-        return "\(percent >= 0 ? "+" : "")\(percent.formatted(.number.precision(.fractionLength(0))))%"
-    }
-
-    private var statusColor: Color {
-        status == .valid ? .secondary : .orange
-    }
-
-    private var deltaColor: Color {
-        guard let delta = comparison.absoluteDelta else { return .secondary }
-        switch comparison.metric {
-        case .sleepHours, .hrv, .steps, .activeEnergyKcal, .exerciseMinutes:
-            return delta < 0 ? .orange : .green
-        case .restingHeartRate:
-            return delta > 0 ? .orange : .green
-        case .workouts:
-            return .secondary
-        }
-    }
-
-    private func value(_ number: Double?) -> String {
-        guard let number else { return language.missing }
-        if comparison.metric == .steps {
-            return number.formatted(.number.precision(.fractionLength(0)).grouping(.automatic))
-        }
-        return number.formatted(.number.precision(.fractionLength(1)))
-    }
-}
-
-private struct MetricTile: View {
-    let title: String
-    let value: String
-    let icon: String
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Label(title, systemImage: icon)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            Text(value)
-                .font(.title2.weight(.semibold))
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding()
-        .background(.background)
-        .clipShape(RoundedRectangle(cornerRadius: 8))
     }
 }
 

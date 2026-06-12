@@ -53,18 +53,6 @@ struct PrivacyView: View {
                 }
 
                 Section {
-                    ScrollView(.horizontal) {
-                        Text(viewModel.privacyPayloadPreview)
-                            .font(.system(.caption, design: .monospaced))
-                            .textSelection(.enabled)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                    .frame(minHeight: 220)
-                } header: {
-                    Text(language.text(.llmPayloadPreview))
-                }
-
-                Section {
                     Text(language.text(.privacyPolicyDescription))
                         .font(.footnote)
                         .foregroundStyle(.secondary)

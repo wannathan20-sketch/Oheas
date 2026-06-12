@@ -28,6 +28,7 @@ final class OHeasViewModel: ObservableObject {
     let experiment: ExperimentViewModel
     let onboarding: OnboardingViewModel
     let sync: SyncViewModel
+    let history: HistoryViewModel
 
     // MARK: - Language
 
@@ -43,6 +44,16 @@ final class OHeasViewModel: ObservableObject {
     @Published var evaluationResults: [EvaluationResult] = []
     @Published var regressionResults: [RegressionResult] = []
 
+    // Follow-up chip state
+    @Published var followUpChips: [CoachFollowUpChip] = []
+    @Published var inlineResponse: CoachInlineResponse?
+    @Published var isLoadingInlineResponse = false
+
+    // Gamification state
+    @Published var gamificationSnapshot: GamificationSnapshot?
+    @Published var showCelebration = false
+    @Published var celebrationBadgeName = ""
+
     // MARK: - Delegated properties (for UI backward compatibility)
 
     // HealthData delegations
@@ -53,6 +64,7 @@ final class OHeasViewModel: ObservableObject {
     var comparisons: [MetricComparison] { healthData.comparisons }
     var dataQuality: DataQualityReport? { healthData.dataQuality }
     var detectedSignals: [HealthSignal] { healthData.detectedSignals }
+    var bodyBudgetScore: BodyBudgetScore? { healthData.bodyBudgetScore }
     var errorKey: TextKey? { healthData.errorKey }
 #if DEBUG
     var selectedDemoScenario: DemoScenario {
@@ -209,6 +221,7 @@ final class OHeasViewModel: ObservableObject {
         self.experiment = ExperimentViewModel(errorReporter: reporter)
         self.onboarding = OnboardingViewModel(consentManager: consent, errorReporter: reporter)
         self.sync = SyncViewModel(consentManager: consent, errorReporter: reporter)
+        self.history = HistoryViewModel()
     }
 
     /// Wire up services that reference each other (avoids circular init dependencies).
@@ -305,6 +318,14 @@ final class OHeasViewModel: ObservableObject {
             yesterdayRecommendation: recommendation.yesterdayRecommendation
         )
 
+        // Generate follow-up chips from the recommendation
+        if let result = recommendation.recommendationResult {
+            followUpChips = recommendation.generateChips(from: result, quality: healthPackage.dataQuality)
+        }
+
+        // Update body budget score with yesterday's feedback
+        healthData.refreshBodyBudgetScore(with: recommendation.yesterdayFeedback)
+
         // Update verification
         recommendation.updateVerification(
             today: healthPackage.todayMetrics,
@@ -327,6 +348,15 @@ final class OHeasViewModel: ObservableObject {
             dataQuality: healthPackage.dataQuality,
             userGoal: "Improve daily body-state decisions."
         )
+
+        // Compute historical day scores (rolling per-day baselines)
+        history.load(
+            metrics: healthPackage.recentDailyMetrics,
+            preferredLanguage: preferredLanguage
+        )
+
+        // Compute gamification snapshot
+        computeGamification()
 
         // Update effectiveness
         updateEffectiveness(healthPackage: healthPackage)
@@ -361,6 +391,42 @@ final class OHeasViewModel: ObservableObject {
         recommendation.saveFeedback()
         if let today = todayMetrics, let baseline = baseline14d, let quality = dataQuality {
             recommendation.updateVerification(today: today, baseline: baseline, quality: quality)
+        }
+    }
+
+    // MARK: - Follow-Up Chips
+
+    func handleChipTap(_ chip: CoachFollowUpChip, aiEnabled: Bool = true) {
+        switch chip.action {
+        case .askQuestion:
+            Task {
+                isLoadingInlineResponse = true
+                inlineResponse = nil
+                if let context = agentContext {
+                    let response = await recommendation.fetchInlineResponse(
+                        for: chip,
+                        context: context,
+                        aiEnabled: aiEnabled
+                    )
+                    await MainActor.run {
+                        inlineResponse = response
+                        isLoadingInlineResponse = false
+                    }
+                } else {
+                    await MainActor.run {
+                        isLoadingInlineResponse = false
+                    }
+                }
+            }
+        case .navigateToChat:
+            // Handled by TodayView -> RootTabView coordination
+            break
+        }
+    }
+
+    func dismissInlineResponse() {
+        withAnimation(OhAnimation.appear()) {
+            inlineResponse = nil
         }
     }
 
@@ -607,6 +673,74 @@ final class OHeasViewModel: ObservableObject {
         }
     }
 #endif
+
+    // MARK: - Gamification
+
+    private func computeGamification() {
+        let badgeStore = BadgeStore(fileURL: OHeasStorageURLs.badges)
+        let previouslyEarned = (try? badgeStore.loadBadges()) ?? []
+        let feedbackHistory = (try? FeedbackStore(fileURL: OHeasStorageURLs.feedback).all()) ?? []
+        let plans = currentWeeklyPlan?.days ?? []
+        let chatMessages = ChatMessageStore(fileURL: OHeasStorageURLs.chatMessages)
+        let sessions = (try? chatMessages.loadSessions()) ?? []
+        let allMessages = sessions.flatMap(\.messages)
+        let recommendations = (try? RecommendationHistoryStore(fileURL: OHeasStorageURLs.recommendations).all()) ?? []
+        let weeklyReviews = (try? CodableFileStore<WeeklyReview>(fileURL: OHeasStorageURLs.weeklyReviews).load()) ?? []
+
+        // Build score history from recent metrics
+        var scores: [(Date, BodyBudgetScore)] = []
+        let scorer = BodyBudgetScorer()
+        let baseline = healthData.baseline14d ?? HealthBaseline(windowDays: 14)
+        for metric in healthData.recentDailyMetrics {
+            let fb = feedbackHistory.first { Calendar.current.isDate($0.date, inSameDayAs: metric.date) }
+            let score = scorer.score(
+                today: metric,
+                baseline: baseline,
+                signals: [], // Historical signals not recomputed for gamification
+                feedback: fb,
+                preferredLanguage: preferredLanguage
+            )
+            scores.append((metric.date, score))
+        }
+
+        let evaluator = BadgeEvaluator()
+        let snapshot = evaluator.computeSnapshot(
+            metrics: healthData.recentDailyMetrics,
+            feedback: feedbackHistory,
+            plans: plans,
+            chatMessages: allMessages,
+            scores: scores,
+            experiments: experiment.experimentHistory,
+            recommendations: recommendations,
+            weeklyReviews: weeklyReviews,
+            previouslyEarned: previouslyEarned
+        )
+
+        gamificationSnapshot = snapshot
+
+        // Trigger celebration for newly unlocked badges
+        if let firstBadge = snapshot.newlyUnlocked.first {
+            celebrationBadgeName = firstBadge.nameKey
+            showCelebration = true
+            // Persist newly earned badges
+            var updated = previouslyEarned
+            for def in snapshot.newlyUnlocked {
+                let state = BadgeState(badgeId: def.criteria.identifier)
+                updated.append(state)
+            }
+            try? badgeStore.saveAll(updated)
+            gamificationSnapshot = GamificationSnapshot(
+                streaks: snapshot.streaks,
+                earnedBadges: updated,
+                newlyUnlocked: []
+            )
+        }
+    }
+
+    func acknowledgeCelebration() {
+        showCelebration = false
+        celebrationBadgeName = ""
+    }
 
     // MARK: - Private
 

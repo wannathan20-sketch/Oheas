@@ -15,7 +15,8 @@ import SwiftUI
 struct PlanTabView: View {
     @ObservedObject var viewModel: OHeasViewModel
     let language: AppLanguage
-    @State private var showSettings = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var isRegenerating = false
 
     var body: some View {
         NavigationStack {
@@ -23,19 +24,22 @@ struct PlanTabView: View {
                 VStack(alignment: .leading, spacing: 16) {
                     // Quick-access navigation row (always visible)
                     quickActions
+                        .softAppear(true, delay: 0.02, reduceMotion: reduceMotion)
 
-                    if viewModel.isLoading {
+                    if viewModel.isLoading || isRegenerating {
                         SkeletonSection(cardCount: 1, cardHeight: 100)
                         SkeletonSection(cardCount: 7, cardHeight: 120)
                     } else if viewModel.todayDailyPlan != nil || viewModel.currentWeeklyPlan != nil {
                         // Today's plan
                         if let today = viewModel.todayDailyPlan {
                             planCard(today, title: language.text(.todayPlan), highlighted: true)
+                                .softAppear(true, delay: 0.08, reduceMotion: reduceMotion)
                         }
 
                         // Weekly plan
                         if let plan = viewModel.currentWeeklyPlan {
                             weeklySection(plan)
+                                .softAppear(true, delay: 0.14, reduceMotion: reduceMotion)
                         }
                     } else {
                         ContentUnavailableView(
@@ -50,18 +54,7 @@ struct PlanTabView: View {
             }
             .background(Color(.systemGroupedBackground))
             .navigationTitle(language.text(.planTab))
-            .toolbar {
-                ToolbarItem(placement: .primaryAction) {
-                    Button {
-                        showSettings = true
-                    } label: {
-                        Image(systemName: "person.crop.circle")
-                    }
-                }
-            }
-            .sheet(isPresented: $showSettings) {
-                SettingsView(viewModel: viewModel)
-            }
+            .animation(OhAnimation.appear(), value: viewModel.isLoading)
         }
     }
 
@@ -112,17 +105,29 @@ struct PlanTabView: View {
                     .font(.headline)
                 Spacer()
                 Button {
+                    isRegenerating = true
                     viewModel.regenerateWeeklyPlan()
+                    Task {
+                        try? await Task.sleep(nanoseconds: 1_500_000_000)
+                        await MainActor.run {
+                            withAnimation(OhAnimation.stagger()) {
+                                isRegenerating = false
+                            }
+                        }
+                    }
                 } label: {
                     Label(language.text(.regeneratePlan), systemImage: "arrow.clockwise")
                 }
                 .font(.caption)
+                .pressableScale()
+                .disabled(isRegenerating)
             }
             Text(plan.strategySummary)
                 .font(.footnote)
                 .foregroundStyle(.secondary)
-            ForEach(plan.days) { day in
-                planCard(day, title: day.date.formatted(date: .abbreviated, time: .omitted), highlighted: false)
+            ForEach(Array(plan.days.enumerated()), id: \.element.id) { index, day in
+                planCard(day, title: language.formatDate(day.date, dateStyle: .medium), highlighted: false)
+                    .softAppear(true, delay: Double(index) * 0.035, reduceMotion: reduceMotion)
             }
         }
     }
@@ -134,10 +139,34 @@ struct PlanTabView: View {
             HStack {
                 Text(title)
                     .font(highlighted ? .headline : .subheadline.weight(.semibold))
+                if highlighted {
+                    Text(language.text(.todayBadge))
+                        .font(.caption2.weight(.bold))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 3)
+                        .background(Color.accentColor)
+                        .clipShape(Capsule())
+                }
                 Spacer()
+                // Status badge for non-planned days (shown instead of plan type)
+                if day.status != .planned {
+                    Label(statusText(day.status), systemImage: statusIcon(day.status))
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(statusColor(day.status))
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 3)
+                        .background(statusColor(day.status).opacity(0.12))
+                        .clipShape(Capsule())
+                        .transition(.scale.combined(with: .opacity))
+                }
                 Text(language.planType(day.planType))
                     .font(.caption.weight(.medium))
                     .foregroundStyle(.secondary)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(Color(.secondarySystemGroupedBackground))
+                    .clipShape(Capsule())
             }
 
             Text(day.title)
@@ -146,69 +175,145 @@ struct PlanTabView: View {
                 .font(.footnote)
                 .foregroundStyle(.secondary)
 
-            HStack {
+            HStack(spacing: 16) {
                 Label("\(day.estimatedDurationMinutes) \(language.text(.minUnit))", systemImage: "timer")
-                Label(day.intensity.rawValue.replacingOccurrences(of: "_", with: " "), systemImage: "gauge")
+                Label(language.planIntensity(day.intensity), systemImage: "gauge")
+                Spacer()
+                // Status label line for adjusted days
+                if let reason = day.adjustmentReason {
+                    Label(reason, systemImage: "info.circle")
+                        .font(.caption2)
+                        .foregroundStyle(.orange)
+                        .lineLimit(1)
+                }
             }
             .font(.caption)
             .foregroundStyle(.secondary)
 
-            if let reason = day.adjustmentReason {
-                Text("\(language.text(.adjusted)): \(reason)")
-                    .font(.footnote)
-                    .foregroundStyle(.orange)
-            }
-
             if day.safetyNote?.localizedCaseInsensitiveContains("Adjusted for safety") == true || day.adjustmentReason?.localizedCaseInsensitiveContains("Safety guardrail") == true {
                 Label(language.text(.safetyAdjustedLabel), systemImage: "shield.lefthalf.filled")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
             }
 
-            HStack {
-                Button(language.text(.markCompleted)) {
-                    viewModel.updateDailyPlanStatus(day, status: .completed)
-                }
-                .buttonStyle(.bordered)
-
-                Button(language.text(.markSkipped)) {
-                    viewModel.updateDailyPlanStatus(day, status: .skipped)
-                }
-                .buttonStyle(.bordered)
-
-                Spacer()
-
-                Menu {
-                    ForEach(DailyPlanType.allCases, id: \.self) { type in
-                        Button(language.planType(type)) {
-                            viewModel.replaceDailyPlan(day, type: type, duration: day.estimatedDurationMinutes)
-                        }
-                    }
-                } label: {
-                    Label(language.text(.adjustLabel), systemImage: "slider.horizontal.3")
-                }
-                .font(.caption)
-
+            // Action buttons — compact row
+            if highlighted || day.status != .completed {
                 HStack(spacing: 6) {
                     Button {
-                        viewModel.replaceDailyPlan(day, type: day.planType, duration: max(5, day.estimatedDurationMinutes - 5))
+                        withAnimation(OhAnimation.stagger()) {
+                            viewModel.updateDailyPlanStatus(day, status: .completed)
+                        }
                     } label: {
-                        Image(systemName: "minus")
+                        Label(language.text(.markCompleted), systemImage: "checkmark")
+                            .font(.caption)
                     }
+                    .buttonStyle(.bordered)
+                    .pressableScale()
+                    .tint(day.status == .completed ? .green : .accentColor)
+                    .disabled(day.status == .completed)
 
                     Button {
-                        viewModel.replaceDailyPlan(day, type: day.planType, duration: day.estimatedDurationMinutes + 5)
+                        withAnimation(OhAnimation.stagger()) {
+                            viewModel.updateDailyPlanStatus(day, status: .skipped)
+                        }
                     } label: {
-                        Image(systemName: "plus")
+                        Label(language.text(.markSkipped), systemImage: "forward")
+                            .font(.caption)
+                    }
+                    .buttonStyle(.bordered)
+                    .pressableScale()
+                    .tint(day.status == .skipped ? .secondary : nil)
+                    .disabled(day.status == .skipped)
+
+                    Spacer()
+
+                    Menu {
+                        ForEach(DailyPlanType.allCases, id: \.self) { type in
+                            Button(language.planType(type)) {
+                                withAnimation(OhAnimation.stagger()) {
+                                    viewModel.replaceDailyPlan(day, type: type, duration: day.estimatedDurationMinutes)
+                                }
+                            }
+                        }
+                    } label: {
+                        Image(systemName: "slider.horizontal.3")
+                            .font(.caption)
+                    }
+                    .pressableScale()
+
+                    HStack(spacing: 4) {
+                        Button {
+                            withAnimation(OhAnimation.tab()) {
+                                viewModel.replaceDailyPlan(day, type: day.planType, duration: max(5, day.estimatedDurationMinutes - 5))
+                            }
+                        } label: {
+                            Image(systemName: "minus")
+                                .font(.caption)
+                        }
+                        .pressableScale()
+
+                        Button {
+                            withAnimation(OhAnimation.tab()) {
+                                viewModel.replaceDailyPlan(day, type: day.planType, duration: day.estimatedDurationMinutes + 5)
+                            }
+                        } label: {
+                            Image(systemName: "plus")
+                                .font(.caption)
+                        }
+                        .pressableScale()
                     }
                 }
                 .buttonStyle(.bordered)
-                .font(.caption)
             }
         }
         .padding()
-        .background(.background)
-        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .background(statusBackground(day.status))
+        .clipShape(RoundedRectangle(cornerRadius: Radius.small))
+        .overlay {
+            RoundedRectangle(cornerRadius: Radius.small)
+                .stroke(
+                    highlighted ? Color.accentColor.opacity(0.25) :
+                        statusColor(day.status).opacity(day.status == .planned ? 0 : 0.22),
+                    lineWidth: highlighted ? 1.5 : 1
+                )
+        }
+        .animation(OhAnimation.stagger(), value: day.status)
+    }
+
+    private func statusText(_ status: DailyPlanStatus) -> String {
+        switch status {
+        case .planned: return language.text(.planStatusPlanned)
+        case .adjusted: return language.text(.planStatusAdjusted)
+        case .completed: return language.text(.planStatusCompleted)
+        case .skipped: return language.text(.planStatusSkipped)
+        }
+    }
+
+    private func statusIcon(_ status: DailyPlanStatus) -> String {
+        switch status {
+        case .planned: return "circle"
+        case .adjusted: return "arrow.triangle.2.circlepath"
+        case .completed: return "checkmark.circle.fill"
+        case .skipped: return "forward.circle.fill"
+        }
+    }
+
+    private func statusColor(_ status: DailyPlanStatus) -> Color {
+        switch status {
+        case .planned: return .clear
+        case .adjusted: return .orange
+        case .completed: return .green
+        case .skipped: return .secondary
+        }
+    }
+
+    private func statusBackground(_ status: DailyPlanStatus) -> Color {
+        switch status {
+        case .planned: return Color(.systemBackground)
+        case .adjusted: return Color.orange.opacity(0.08)
+        case .completed: return Color.green.opacity(0.08)
+        case .skipped: return Color(.secondarySystemGroupedBackground)
+        }
     }
 }
 

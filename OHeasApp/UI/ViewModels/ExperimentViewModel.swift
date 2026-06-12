@@ -8,6 +8,7 @@
 
 
 import Foundation
+import SwiftUI
 import OHeasCore
 
 @MainActor
@@ -18,6 +19,11 @@ final class ExperimentViewModel: ObservableObject {
     @Published var experimentCheckinCompleted = false
     @Published var experimentCheckinEnergy: Double = 6
     @Published var experimentCheckinNote: String = ""
+
+    @AppStorage("oheas.language") private var languageRawValue = AppLanguage.chinese.rawValue
+    private var preferredLanguage: String {
+        (AppLanguage(rawValue: languageRawValue) ?? .chinese).rawValue
+    }
 
     private let experimentStore = ExperimentStore(fileURL: OHeasStorageURLs.experiments)
     private let experimentPlanner = ExperimentPlanner()
@@ -65,7 +71,8 @@ final class ExperimentViewModel: ObservableObject {
             recentSignals: recentSignals,
             dataQuality: dataQuality,
             userGoal: userGoal,
-            previousExperiments: experimentHistory
+            previousExperiments: experimentHistory,
+            preferredLanguage: preferredLanguage
         )
         proposedExperiment = proposal
         if let proposedExperiment {
@@ -143,7 +150,8 @@ final class ExperimentViewModel: ObservableObject {
             activeExperiment,
             recentMetrics: recentMetrics,
             baseline: baseline,
-            dataQuality: dataQuality
+            dataQuality: dataQuality,
+            preferredLanguage: preferredLanguage
         )
         do {
             try experimentStore.completeExperiment(activeExperiment.id, result: result)

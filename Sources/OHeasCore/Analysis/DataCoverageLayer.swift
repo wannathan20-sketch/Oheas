@@ -205,6 +205,18 @@ public struct CompletenessSummary: Sendable {
         self.daysWithRestingHR = daysWithRestingHR
     }
 
+    /// Returns a weight multiplier (0.0–1.0) for how much a metric should contribute
+    /// to the Body Budget Score based on its data quality.
+    /// - Parameter metric: The health metric to evaluate.
+    /// - Returns: 1.0 for valid data, 0.5 for partial, 0.0 for missing.
+    public func confidenceWeight(for metric: HealthMetric, in statuses: [HealthMetric: MetricStatus]) -> Double {
+        switch statuses[metric] {
+        case .valid:   return 1.0
+        case .partial: return 0.5
+        case .missing, .none: return 0.0
+        }
+    }
+
     /// True when the user likely hasn't established enough recovery data for a reliable baseline.
     public var isBaselineInsufficient: Bool {
         completeRecoveryDays < 7

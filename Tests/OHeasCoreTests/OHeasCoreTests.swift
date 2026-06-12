@@ -1211,6 +1211,117 @@ struct OHeasCoreTests {
         #expect(summary.baselineGuidanceMessage == nil)
     }
 
+    // MARK: - Body Budget Scorer (Phase 15)
+
+    @Test("BodyBudgetScorer returns elevated score for metrics above baseline")
+    func bodyBudgetScoreHighWhenMetricsStrong() {
+        let today = metrics(
+            sleep: 8.5, hrv: 72, restingHR: 52,
+            steps: 12_000, activeEnergy: 600, exercise: 50
+        )
+        let baseline = HealthBaseline(
+            windowDays: 14,
+            averageSleepHours: 7.0, averageHRV: 55, averageRestingHeartRate: 60,
+            averageSteps: 10_000, averageActiveEnergy: 500, averageExerciseMinutes: 40
+        )
+        let scorer = BodyBudgetScorer()
+        let score = scorer.score(today: today, baseline: baseline, signals: [], feedback: nil)
+
+        // Metrics above baseline produce a fair-to-good score (65+)
+        #expect(score.value >= 65)
+        #expect(score.signalPenalty == 0)
+        // Recovery should be notably higher than activity since recovery metrics are stronger
+        #expect(score.recoverySubscore > 50)
+    }
+
+    @Test("BodyBudgetScorer penalizes high-severity signals")
+    func bodyBudgetScorePenalizesSignals() {
+        let today = metrics(
+            sleep: 6.0, hrv: 42, restingHR: 65,
+            steps: 8_000, activeEnergy: 450, exercise: 30
+        )
+        let baseline = HealthBaseline(
+            windowDays: 14,
+            averageSleepHours: 7.5, averageHRV: 60, averageRestingHeartRate: 58,
+            averageSteps: 10_000, averageActiveEnergy: 500, averageExerciseMinutes: 40
+        )
+        let signals: [HealthSignal] = [
+            HealthSignal(type: .hrvLow, severity: .high,
+                         evidence: "HRV 42ms / 14d 60ms", explanation: "HRV low"),
+            HealthSignal(type: .sleepLow, severity: .medium,
+                         evidence: "Sleep 6h / 14d 7.5h", explanation: "Sleep low"),
+        ]
+        let scorer = BodyBudgetScorer()
+        let scoreNoSignals = scorer.score(today: today, baseline: baseline, signals: [], feedback: nil)
+        let scoreWithSignals = scorer.score(today: today, baseline: baseline, signals: signals, feedback: nil)
+
+        #expect(scoreWithSignals.value < scoreNoSignals.value)
+        #expect(scoreWithSignals.signalPenalty > 0)
+    }
+
+    @Test("BodyBudgetScorer handles missing data by shifting toward neutral")
+    func bodyBudgetScoreNeutralWithMissingData() {
+        let today = metrics(
+            sleep: nil, hrv: nil, restingHR: 58,
+            steps: 9_000, activeEnergy: 500, exercise: 40
+        )
+        let baseline = HealthBaseline(
+            windowDays: 14,
+            averageSleepHours: 7.5, averageHRV: 60, averageRestingHeartRate: 58,
+            averageSteps: 10_000, averageActiveEnergy: 500, averageExerciseMinutes: 40
+        )
+        let scorer = BodyBudgetScorer()
+        let score = scorer.score(today: today, baseline: baseline, signals: [], feedback: nil)
+
+        // With sleep and HRV missing (2/3 of recovery), score should be moderate
+        #expect(score.value >= 40 && score.value <= 75)
+        #expect(score.recoverySubscore >= 30 && score.recoverySubscore <= 70)
+    }
+
+    @Test("BodyBudgetScorer integrates subjective feedback")
+    func bodyBudgetScoreWithFeedback() {
+        let today = metrics(
+            sleep: 7.5, hrv: 60, restingHR: 58,
+            steps: 10_000, activeEnergy: 500, exercise: 40
+        )
+        let baseline = HealthBaseline(
+            windowDays: 14,
+            averageSleepHours: 7.5, averageHRV: 60, averageRestingHeartRate: 58,
+            averageSteps: 10_000, averageActiveEnergy: 500, averageExerciseMinutes: 40
+        )
+        let recId = UUID()
+        let goodFeedback = DailyFeedback(
+            date: Date(), recommendationId: recId, adherence: .completed,
+            subjectiveEnergy: 8, soreness: 2, stress: 3, note: nil
+        )
+        let badFeedback = DailyFeedback(
+            date: Date(), recommendationId: recId, adherence: .skipped,
+            subjectiveEnergy: 3, soreness: 8, stress: 9, note: nil
+        )
+        let scorer = BodyBudgetScorer()
+        let scoreGood = scorer.score(today: today, baseline: baseline, signals: [], feedback: goodFeedback)
+        let scoreBad = scorer.score(today: today, baseline: baseline, signals: [], feedback: badFeedback)
+
+        #expect(scoreGood.value > scoreBad.value)
+        #expect(scoreGood.subjectiveSubscore > scoreBad.subjectiveSubscore)
+    }
+
+    @Test("BodyBudgetScorer returns valid score even with no baseline")
+    func bodyBudgetScoreWithNoBaseline() {
+        let today = metrics(
+            sleep: 7.0, hrv: 55, restingHR: 60,
+            steps: 8_000, activeEnergy: 400, exercise: 30
+        )
+        let baseline = HealthBaseline(windowDays: 14)  // all nil
+        let scorer = BodyBudgetScorer()
+        let score = scorer.score(today: today, baseline: baseline, signals: [], feedback: nil)
+
+        // Without baseline, should still return a valid 0-100 score
+        #expect(score.value >= 0 && score.value <= 100)
+        // Without baseline data, we still get a neutral score (around 50-60)
+        #expect(score.recoverySubscore >= 30)
+    }
+
     private func metrics(
         date: Date = Date(),
         sleep: Double?,

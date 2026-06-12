@@ -8,6 +8,7 @@
 
 
 import Foundation
+import SwiftUI
 import OHeasCore
 
 /// Aggregated output from the health data pipeline, consumed by other ViewModels.
@@ -19,6 +20,7 @@ struct HealthDataPackage: Sendable {
     var detectedSignals: [HealthSignal]
     var recentDailyMetrics: [DailyHealthMetrics]
     var dataSource: HealthDataSource
+    var bodyBudgetScore: BodyBudgetScore?
 
     init(
         todayMetrics: DailyHealthMetrics,
@@ -27,7 +29,8 @@ struct HealthDataPackage: Sendable {
         dataQuality: DataQualityReport,
         detectedSignals: [HealthSignal],
         recentDailyMetrics: [DailyHealthMetrics],
-        dataSource: HealthDataSource
+        dataSource: HealthDataSource,
+        bodyBudgetScore: BodyBudgetScore? = nil
     ) {
         self.todayMetrics = todayMetrics
         self.baseline14d = baseline14d
@@ -36,6 +39,7 @@ struct HealthDataPackage: Sendable {
         self.detectedSignals = detectedSignals
         self.recentDailyMetrics = recentDailyMetrics
         self.dataSource = dataSource
+        self.bodyBudgetScore = bodyBudgetScore
     }
 }
 
@@ -48,6 +52,7 @@ final class HealthDataViewModel: ObservableObject {
     @Published var comparisons: [MetricComparison] = []
     @Published var dataQuality: DataQualityReport?
     @Published var detectedSignals: [HealthSignal] = []
+    @Published var bodyBudgetScore: BodyBudgetScore?
     @Published var errorKey: TextKey?
 #if DEBUG
     @Published var selectedDemoScenario: DemoScenario = .overworkedProfessional
@@ -55,11 +60,17 @@ final class HealthDataViewModel: ObservableObject {
     @Published var isDemoMode = false
 #endif
 
+    @AppStorage("oheas.language") private var languageRawValue = AppLanguage.chinese.rawValue
+    private var preferredLanguage: String {
+        (AppLanguage(rawValue: languageRawValue) ?? .chinese).rawValue
+    }
+
     private let calendar = Calendar.current
     private let aggregator = DailyMetricsAggregator()
     private let baselineEngine = BaselineEngine()
     private let coverageLayer = DataCoverageLayer()
     private let signalDetector = SignalDetector()
+    private let budgetScorer = BodyBudgetScorer()
 #if DEBUG
     private let demoBuilder = DemoScenarioBuilder()
 #endif
@@ -114,13 +125,23 @@ final class HealthDataViewModel: ObservableObject {
 
         let baseline = baselineEngine.baseline(from: daily, endingBefore: today.date, windowDays: 14)
         let quality = coverageLayer.report(for: today)
-        let signals = signalDetector.detect(today: today, baseline: baseline, dataQuality: quality)
+        let signals = signalDetector.detect(today: today, baseline: baseline, dataQuality: quality, preferredLanguage: preferredLanguage)
 
         todayMetrics = today
         baseline14d = baseline
         comparisons = baselineEngine.comparisons(today: today, baseline: baseline)
         dataQuality = quality
         detectedSignals = signals
+
+        // Compute Body Budget Score (Phase 15 north-star metric)
+        let budgetScore = budgetScorer.score(
+            today: today,
+            baseline: baseline,
+            signals: signals,
+            feedback: nil,  // feedback loaded separately after pipeline
+            preferredLanguage: preferredLanguage
+        )
+        bodyBudgetScore = budgetScore
 
         return HealthDataPackage(
             todayMetrics: today,
@@ -129,7 +150,8 @@ final class HealthDataViewModel: ObservableObject {
             dataQuality: quality,
             detectedSignals: signals,
             recentDailyMetrics: daily,
-            dataSource: dataSource
+            dataSource: dataSource,
+            bodyBudgetScore: budgetScore
         )
     }
 
@@ -144,12 +166,20 @@ final class HealthDataViewModel: ObservableObject {
         baseline14d = baselineEngine.baseline(from: data.metrics, windowDays: 14)
         dataQuality = todayMetrics.map { coverageLayer.report(for: $0) }
         if let todayMetrics, let baseline14d, let dataQuality {
-            detectedSignals = signalDetector.detect(today: todayMetrics, baseline: baseline14d, dataQuality: dataQuality)
+            detectedSignals = signalDetector.detect(today: todayMetrics, baseline: baseline14d, dataQuality: dataQuality, preferredLanguage: preferredLanguage)
         }
 
         guard let today = todayMetrics, let baseline = baseline14d, let quality = dataQuality else {
             return nil
         }
+        let budgetScore = budgetScorer.score(
+            today: today,
+            baseline: baseline,
+            signals: detectedSignals,
+            feedback: nil,
+            preferredLanguage: preferredLanguage
+        )
+        bodyBudgetScore = budgetScore
         return HealthDataPackage(
             todayMetrics: today,
             baseline14d: baseline,
@@ -157,7 +187,8 @@ final class HealthDataViewModel: ObservableObject {
             dataQuality: quality,
             detectedSignals: detectedSignals,
             recentDailyMetrics: recentDailyMetrics,
-            dataSource: .mock
+            dataSource: .mock,
+            bodyBudgetScore: budgetScore
         )
     }
 
@@ -170,6 +201,7 @@ final class HealthDataViewModel: ObservableObject {
         comparisons = []
         dataQuality = nil
         detectedSignals = []
+        bodyBudgetScore = nil
         recentDailyMetrics = []
         errorKey = nil
     }
@@ -183,5 +215,17 @@ final class HealthDataViewModel: ObservableObject {
         baseline14d = baseline
         dataQuality = quality
         comparisons = baselineEngine.comparisons(today: today, baseline: baseline)
+    }
+
+    /// Recompute the Body Budget Score with subjective feedback (after feedback is loaded).
+    func refreshBodyBudgetScore(with feedback: DailyFeedback?) {
+        guard let today = todayMetrics, let baseline = baseline14d else { return }
+        bodyBudgetScore = budgetScorer.score(
+            today: today,
+            baseline: baseline,
+            signals: detectedSignals,
+            feedback: feedback,
+            preferredLanguage: preferredLanguage
+        )
     }
 }

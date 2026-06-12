@@ -9,10 +9,18 @@ import SwiftUI
 struct ChatView: View {
     @ObservedObject var viewModel: OHeasViewModel
     let language: AppLanguage
+    @Binding var pendingPrompt: String?
     @StateObject private var chatVM = ChatViewModel()
     @State private var inputText = ""
     @FocusState private var isInputFocused: Bool
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @AppStorage("oheas.aiEnabled") private var aiEnabled = true
+
+    private var canSend: Bool {
+        !inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        && chatVM.streamState != .connecting
+        && chatVM.streamState != .streaming
+    }
 
     var body: some View {
         NavigationStack {
@@ -20,18 +28,22 @@ struct ChatView: View {
                 // Offline banner
                 if chatVM.connectionStatus == .localOnly && !chatVM.messages.isEmpty {
                     offlineBanner
+                        .transition(.move(edge: .top).combined(with: .opacity))
                 }
 
                 // Error banner
                 if case .error(let msg) = chatVM.streamState {
                     errorBanner(msg)
+                        .transition(.move(edge: .top).combined(with: .opacity))
                 }
 
                 // Message list
                 ScrollViewReader { proxy in
                     ScrollView {
                         LazyVStack(alignment: .leading, spacing: 12) {
-                            if chatVM.messages.isEmpty && chatVM.streamState == .idle {
+                            if chatVM.connectionStatus == .checking && chatVM.messages.isEmpty {
+                                chatSkeleton
+                            } else if chatVM.messages.isEmpty && chatVM.streamState == .idle {
                                 emptyState
                             }
 
@@ -58,10 +70,12 @@ struct ChatView: View {
                     .onChange(of: chatVM.streamState) { _, _ in scrollToBottom(proxy: proxy) }
                 }
                 .background(Color(.systemGroupedBackground))
+                .animation(OhAnimation.stagger(), value: chatVM.messages.count)
+                .animation(OhAnimation.stagger(), value: chatVM.connectionStatus == .localOnly)
 
                 inputBar
             }
-            .navigationTitle(chatVM.currentSession?.displayTitle ?? language.text(.chatTab))
+            .navigationTitle(chatVM.currentSession.map(displayTitle) ?? language.text(.chatTab))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
@@ -98,6 +112,16 @@ struct ChatView: View {
                 chatVM.checkConnection()
                 chatVM.generateStarters(context: viewModel.agentContext, preferredLanguage: language.rawValue)
             }
+            .onChange(of: pendingPrompt) { _, prompt in
+                guard let prompt, !prompt.isEmpty else { return }
+                pendingPrompt = nil
+                inputText = prompt
+                Task {
+                    // Give SwiftUI time to update inputText before sending
+                    try? await Task.sleep(nanoseconds: 100_000_000)
+                    await MainActor.run { sendMessage() }
+                }
+            }
         }
     }
 
@@ -115,7 +139,7 @@ struct ChatView: View {
                             Image(systemName: "plus.circle.fill")
                                 .font(.title3)
                                 .foregroundStyle(.indigo)
-                            Text(language == .chinese ? "新对话" : "New Chat")
+                            Text(language.text(.newChatAction))
                                 .font(.body.weight(.medium))
                         }
                     }
@@ -125,7 +149,7 @@ struct ChatView: View {
                     if chatVM.sessions.isEmpty {
                         HStack {
                             Spacer()
-                            Text(language == .chinese ? "暂无历史对话" : "No recent chats")
+                            Text(language.text(.noRecentChats))
                                 .foregroundStyle(.secondary)
                                 .padding(.vertical, 20)
                             Spacer()
@@ -136,7 +160,7 @@ struct ChatView: View {
                                 chatVM.switchToSession(session)
                             } label: {
                                 VStack(alignment: .leading, spacing: 4) {
-                                    Text(session.displayTitle)
+                                    Text(displayTitle(session))
                                         .font(.body.weight(chatVM.currentSession?.id == session.id ? .semibold : .regular))
                                         .foregroundStyle(chatVM.currentSession?.id == session.id ? Color.indigo : .primary)
                                         .lineLimit(1)
@@ -158,20 +182,20 @@ struct ChatView: View {
                                 Button(role: .destructive) {
                                     chatVM.deleteSession(session)
                                 } label: {
-                                    Label(language == .chinese ? "删除" : "Delete", systemImage: "trash")
+                                    Label(language.text(.deleteAction), systemImage: "trash")
                                 }
                             }
                         }
                     }
                 } header: {
-                    Text(language == .chinese ? "最近" : "Recent")
+                    Text(language.text(.recentHeader))
                 }
             }
-            .navigationTitle(language == .chinese ? "对话历史" : "Chat History")
+            .navigationTitle(language.text(.chatHistoryTitle))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
-                    Button(language == .chinese ? "完成" : "Done") {
+                    Button(language.text(.doneAction)) {
                         chatVM.showSessionList = false
                     }
                 }
@@ -183,30 +207,41 @@ struct ChatView: View {
     private func formatSessionDate(_ date: Date) -> String {
         let calendar = Calendar.current
         if calendar.isDateInToday(date) {
-            return date.formatted(.dateTime.hour().minute())
+            return language.formatDate(date, dateStyle: .none, timeStyle: .short)
         } else if calendar.isDateInYesterday(date) {
-            return language == .chinese ? "昨天" : "Yesterday"
+            return language.text(.yesterdayLabel)
         } else if calendar.isDate(date, equalTo: Date(), toGranularity: .weekOfYear) {
-            return date.formatted(.dateTime.weekday(.abbreviated))
+            let formatter = DateFormatter()
+            formatter.locale = language.locale
+            formatter.dateFormat = "EEE"
+            return formatter.string(from: date)
         } else {
-            return date.formatted(.dateTime.month(.abbreviated).day())
+            return language.formatDate(date, dateStyle: .medium)
         }
+    }
+
+    private func displayTitle(_ session: ChatSession) -> String {
+        if language == .chinese, session.title == "New Chat", session.messages.first(where: { $0.role == .user }) == nil {
+            return "新对话"
+        }
+        return session.displayTitle
     }
 
     // MARK: - Offline Banner
 
     private var offlineBanner: some View {
         HStack(spacing: 8) {
-            Image(systemName: "wifi.slash").font(.caption)
-            Text(language == .chinese
-                 ? "AI 未连接 — 当前使用本地回复。请检查 API Key 配置或开启 AI 开关。"
-                 : "AI not connected — using local replies. Check API Key or enable AI in Settings.")
+            Image(systemName: "antenna.radiowaves.left.and.right").font(.caption)
+            Text(language.text(.offlineBannerText))
                 .font(.caption2)
             Spacer()
         }
         .foregroundStyle(.orange)
         .padding(.horizontal, 14).padding(.vertical, 8)
-        .background(Color.orange.opacity(0.1))
+        .background(Color.orange.opacity(0.08))
+        .overlay(alignment: .top) {
+            Rectangle().fill(Color.orange.opacity(0.25)).frame(height: 1)
+        }
     }
 
     private func errorBanner(_ message: String) -> some View {
@@ -218,7 +253,7 @@ struct ChatView: View {
                 chatVM.streamState = .idle
                 chatVM.retryLastMessage(context: viewModel.agentContext, aiEnabled: aiEnabled, preferredLanguage: language.rawValue)
             } label: {
-                Text(language == .chinese ? "重试" : "Retry").font(.caption.weight(.semibold))
+                Text(language.text(.retryAction)).font(.caption.weight(.semibold))
             }
         }
         .foregroundStyle(.red)
@@ -232,8 +267,8 @@ struct ChatView: View {
                 .fill(chatVM.connectionStatus == .connected ? Color.green : Color.orange)
                 .frame(width: 6, height: 6)
             Text(chatVM.connectionStatus == .connected
-                 ? (language == .chinese ? "AI 已连接" : "AI Connected")
-                 : (language == .chinese ? "本地模式" : "Local Mode"))
+                 ? language.text(.aiOnlineShort)
+                 : language.text(.localModeShort))
                 .font(.caption2).foregroundStyle(.secondary)
         }
         .padding(.horizontal, 8).padding(.vertical, 4)
@@ -244,42 +279,46 @@ struct ChatView: View {
     // MARK: - Empty State
 
     private var emptyState: some View {
-        VStack(spacing: 24) {
-            Spacer().frame(height: 60)
+        VStack(spacing: 20) {
+            Spacer().frame(height: 40)
 
             if chatVM.connectionStatus == .localOnly {
-                Image(systemName: "antenna.radiowaves.left.and.right.slash")
-                    .font(.system(size: 40)).foregroundStyle(.orange.opacity(0.6))
-                Text(language == .chinese ? "AI 教练未连接" : "AI Coach Offline")
-                    .font(.title3.weight(.semibold))
-                Text(language == .chinese
-                     ? "请确认：\n1. 设置中 AI 开关已开启\n2. API Key 已配置（运行 ./configure.sh）\n\n当前使用本地规则回复，基础健康问题仍可回答。"
-                     : "Please check:\n1. AI is enabled in Settings\n2. API Key is configured (run ./configure.sh)\n\nLocal rule-based replies are available for basic health questions.")
-                    .font(.subheadline).foregroundStyle(.secondary).multilineTextAlignment(.center).padding(.horizontal, 32)
-            } else {
+                // Offline empty state — clear but friendly
                 Image(systemName: "bubble.left.and.bubble.right")
-                    .font(.system(size: 48)).foregroundStyle(.indigo.opacity(0.5))
-                Text(language.text(.chatEmptyTitle)).font(.title3.weight(.semibold))
-                Text(language.text(.chatEmptyDescription))
+                    .font(.system(size: 44)).foregroundStyle(.orange.opacity(0.45))
+                Text(language.text(.chatOfflineTitle))
+                    .font(.title3.weight(.semibold))
+                Text(language.text(.chatOfflineDescription))
                     .font(.subheadline).foregroundStyle(.secondary).multilineTextAlignment(.center).padding(.horizontal, 32)
 
                 if !chatVM.conversationStarters.isEmpty {
                     VStack(spacing: 8) {
-                        ForEach(chatVM.conversationStarters) { starter in
-                            Button {
-                                sendStarter(starter.text)
-                            } label: {
-                                HStack(spacing: 6) {
-                                    Image(systemName: starter.icon).font(.caption)
-                                    Text(starter.text).font(.subheadline)
-                                    Spacer()
-                                    Image(systemName: "chevron.right").font(.caption2).foregroundStyle(.secondary)
-                                }
-                                .padding(.horizontal, 14).padding(.vertical, 10)
-                                .background(.background)
-                                .clipShape(RoundedRectangle(cornerRadius: 10))
+                        ForEach(Array(chatVM.conversationStarters.prefix(3)), id: \.id) { starter in
+                            Button { sendStarter(starter.text) } label: {
+                                starterRow(starter)
                             }
                             .buttonStyle(.plain)
+                        }
+                    }
+                    .padding(.horizontal, 16)
+                }
+            } else {
+                // Connected empty state — context-aware
+                Image(systemName: "bubble.left.and.bubble.right")
+                    .font(.system(size: 44)).foregroundStyle(.indigo.opacity(0.45))
+                Text(language.text(.chatContextEmptyTitle))
+                    .font(.title3.weight(.semibold))
+                Text(language.text(.chatContextEmptyHint))
+                    .font(.subheadline).foregroundStyle(.secondary).multilineTextAlignment(.center).padding(.horizontal, 32)
+
+                if !chatVM.conversationStarters.isEmpty {
+                    VStack(spacing: 8) {
+                        ForEach(Array(chatVM.conversationStarters.enumerated()), id: \.element.id) { index, starter in
+                            Button { sendStarter(starter.text) } label: {
+                                starterRow(starter)
+                            }
+                            .buttonStyle(.plain)
+                            .softAppear(true, delay: Double(index) * 0.05, yOffset: 8, reduceMotion: reduceMotion)
                         }
                     }
                     .padding(.horizontal, 16)
@@ -291,8 +330,47 @@ struct ChatView: View {
         .id("empty")
     }
 
+    private func starterRow(_ starter: ConversationStarter) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: starter.icon)
+                .font(.caption)
+                .foregroundStyle(.indigo)
+                .frame(width: 20)
+            Text(starter.text)
+                .font(.subheadline)
+                .foregroundStyle(.primary)
+            Spacer()
+            Image(systemName: "chevron.right")
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
+        }
+        .padding(.horizontal, 14).padding(.vertical, 10)
+        .background(.background)
+        .clipShape(RoundedRectangle(cornerRadius: Radius.small))
+    }
+
     private func sendStarter(_ text: String) {
         chatVM.sendMessage(text, context: viewModel.agentContext, aiEnabled: aiEnabled, preferredLanguage: language.rawValue)
+    }
+
+    // MARK: - Skeleton State
+
+    private var chatSkeleton: some View {
+        VStack(spacing: 12) {
+            Spacer().frame(height: 40)
+            ForEach(0..<4) { i in
+                HStack {
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(Color(.systemGray5))
+                        .frame(width: CGFloat([200, 160, 240, 180][i]), height: 14)
+                    Spacer()
+                }
+                .padding(.vertical, 6)
+            }
+            Spacer()
+        }
+        .padding(.horizontal, 16)
+        .id("chatSkeleton")
     }
 
     // MARK: - Input Bar
@@ -304,6 +382,12 @@ struct ChatView: View {
                 TextField(language.text(.chatPlaceholder), text: $inputText, axis: .vertical)
                     .lineLimit(1...5).textFieldStyle(.plain)
                     .padding(.horizontal, 12).padding(.vertical, 10)
+                    .background(Color(.systemBackground))
+                    .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 18, style: .continuous)
+                            .stroke(isInputFocused ? Color.indigo.opacity(0.45) : Color.clear, lineWidth: 1)
+                    }
                     .focused($isInputFocused)
                     .onSubmit { sendMessage() }
 
@@ -317,21 +401,26 @@ struct ChatView: View {
                 Button { sendMessage() } label: {
                     Image(systemName: "arrow.up.circle.fill").font(.title2).symbolRenderingMode(.hierarchical)
                 }
-                .disabled(inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                          || chatVM.streamState == .connecting
-                          || chatVM.streamState == .streaming)
+                .disabled(!canSend)
+                .pressableScale()
+                .scaleEffect(canSend && !reduceMotion ? 1.08 : 1)
                 .padding(.trailing, 12).padding(.bottom, 5)
             }
             .padding(.vertical, 4)
+            .padding(.leading, 8)
             .background(.regularMaterial)
-            .shadow(color: .black.opacity(0.06), radius: 4, y: -2)
+            .shadow(color: .black.opacity(OhShadow.input.opacity), radius: OhShadow.input.radius, y: OhShadow.input.y)
+            .animation(OhAnimation.press(), value: isInputFocused)
+            .animation(OhAnimation.press(), value: canSend)
         }
     }
 
     private func sendMessage() {
         let text = inputText
         inputText = ""
-        chatVM.sendMessage(text, context: viewModel.agentContext, aiEnabled: aiEnabled, preferredLanguage: language.rawValue)
+        withAnimation(OhAnimation.tab()) {
+            chatVM.sendMessage(text, context: viewModel.agentContext, aiEnabled: aiEnabled, preferredLanguage: language.rawValue)
+        }
     }
 
     private func scrollToBottom(proxy: ScrollViewProxy) {
@@ -344,6 +433,7 @@ struct ChatView: View {
 private struct MessageBubble: View {
     let message: ChatMessage
     let language: AppLanguage
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         HStack {
@@ -365,6 +455,8 @@ private struct MessageBubble: View {
                 Spacer(minLength: 60)
             }
         }
+        .softAppear(true, yOffset: 8, reduceMotion: reduceMotion)
+        .transition(.opacity.combined(with: .scale(scale: 0.98, anchor: message.role == .user ? .trailing : .leading)))
     }
 }
 
@@ -374,6 +466,7 @@ private struct StreamingBubble: View {
     let text: String
     let streamState: StreamState
     let language: AppLanguage
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         HStack {
@@ -384,7 +477,7 @@ private struct StreamingBubble: View {
                 switch streamState {
                 case .connecting:
                     HStack(spacing: 4) {
-                        Text(language == .chinese ? "正在思考" : "Thinking")
+                        Text(language.text(.thinkingLabel))
                             .font(.subheadline).foregroundStyle(.secondary)
                         PulsingDots()
                     }
@@ -409,6 +502,7 @@ private struct StreamingBubble: View {
             }
             Spacer(minLength: 60)
         }
+        .softAppear(true, yOffset: 8, reduceMotion: reduceMotion)
     }
 }
 
@@ -424,7 +518,7 @@ private struct PulsingDots: View {
                     .fill(Color.accentColor.opacity(0.5))
                     .frame(width: 5, height: 5)
                     .scaleEffect(animating ? 1.2 : 0.7)
-                    .animation(.easeInOut(duration: 0.5).repeatForever().delay(Double(i) * 0.2), value: animating)
+                    .animation(OhAnimation.dotPulse.delay(Double(i) * 0.2), value: animating)
             }
         }
         .onAppear { animating = true }
@@ -432,5 +526,5 @@ private struct PulsingDots: View {
 }
 
 #Preview {
-    ChatView(viewModel: OHeasViewModel(), language: .chinese)
+    ChatView(viewModel: OHeasViewModel(), language: .chinese, pendingPrompt: .constant(nil))
 }
