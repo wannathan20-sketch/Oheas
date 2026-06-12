@@ -247,7 +247,10 @@ private struct PrivacyConsentView: View {
                     Label(language.text(.privacyControlsLabel), systemImage: "lock.shield")
                 }
                 NavigationLink {
-                    HealthPermissionRecoveryView()
+                    HealthPermissionRecoveryView(
+                        dataSource: viewModel.dataSource,
+                        perMetricStatus: viewModel.dataQuality?.perMetricStatus ?? [:]
+                    )
                 } label: {
                     Label(language.text(.healthPermissionsLabel), systemImage: "heart.text.square")
                 }

@@ -465,6 +465,14 @@ enum AppLanguage: String, CaseIterable, Identifiable, Equatable {
         dict[.yesterdayLabel] = ("昨天", "Yesterday")
         dict[.yesterdayRecommendation] = ("昨日建议", "Yesterday Recommendation")
         dict[.yesterdaySection] = ("昨日验证", "Yesterday")
+
+        // HealthKit data-coverage view
+        dict[.healthKitConnected] = ("已连接 Apple Health", "Connected to Apple Health")
+        dict[.healthKitNotConnected] = ("未连接 HealthKit", "Not Connected to HealthKit")
+        dict[.metricsHaveData] = ("项指标有数据", "metrics have data")
+        dict[.dataAvailable] = ("有数据", "Data")
+        dict[.dataPartial] = ("部分数据", "Partial")
+        dict[.noData] = ("无数据", "No Data")
         return dict
     }
 
@@ -1160,6 +1168,14 @@ enum TextKey {
     case splashWakingUp
     case stepPillData
     case stepPillReady
+
+    // HealthKit data-coverage view (replaces unreliable authorizationStatus(for:))
+    case healthKitConnected
+    case healthKitNotConnected
+    case metricsHaveData
+    case dataAvailable
+    case dataPartial
+    case noData
 }
 
 extension AppLanguage {
