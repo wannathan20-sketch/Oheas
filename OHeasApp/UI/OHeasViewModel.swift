@@ -62,6 +62,7 @@ final class OHeasViewModel: ObservableObject {
     // HealthData delegations
     var isLoading: Bool { healthData.isLoading }
     var dataSource: HealthDataSource { healthData.dataSource }
+    var healthKitError: String? { healthData.healthKitError }
     var todayMetrics: DailyHealthMetrics? { healthData.todayMetrics }
     var baseline14d: HealthBaseline? { healthData.baseline14d }
     var comparisons: [MetricComparison] { healthData.comparisons }

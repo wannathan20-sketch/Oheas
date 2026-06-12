@@ -113,9 +113,7 @@ struct HealthPermissionRecoveryView: View {
     private var bannerColor: Color {
         switch dataSource {
         case .appleHealth: return .green
-        #if DEBUG
         case .mock:        return .orange
-        #endif
         }
     }
 
@@ -123,10 +121,8 @@ struct HealthPermissionRecoveryView: View {
         switch dataSource {
         case .appleHealth:
             return language.text(.healthKitConnected)
-        #if DEBUG
         case .mock:
             return language.text(.healthKitNotConnected)
-        #endif
         }
     }
 
@@ -135,10 +131,8 @@ struct HealthPermissionRecoveryView: View {
         case .appleHealth:
             let available = perMetricStatus.values.filter { $0 == .valid || $0 == .partial }.count
             return "\(available)/\(metrics.count) \(language.text(.metricsHaveData))"
-        #if DEBUG
         case .mock:
             return language.text(.permissionWhyDescription)
-        #endif
         }
     }
 
@@ -192,7 +186,6 @@ struct HealthPermissionRecoveryView: View {
     }
 }
 
-#if DEBUG
 #Preview {
     HealthPermissionRecoveryView(
         dataSource: .mock,
@@ -207,4 +200,3 @@ struct HealthPermissionRecoveryView: View {
         ]
     )
 }
-#endif

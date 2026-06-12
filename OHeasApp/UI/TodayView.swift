@@ -27,6 +27,27 @@ struct TodayView: View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 0) {
+                    // 0. Mock-mode diagnostic banner (only when HealthKit failed)
+                    if viewModel.dataSource != .appleHealth, let error = viewModel.healthKitError {
+                        HStack(spacing: 8) {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .foregroundColor(.orange)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(language.text(.mockFallback))
+                                    .font(.caption.weight(.semibold))
+                                Text(error)
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                        }
+                        .padding(10)
+                        .background(Color.orange.opacity(0.1))
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                        .padding(.horizontal, 16)
+                        .padding(.top, 8)
+                    }
+
                     // 1. Score-first header — big ring + insight
                     if let today = viewModel.todayMetrics, let quality = viewModel.dataQuality {
                         TodaySummaryHeader(

@@ -1292,7 +1292,5 @@ extension AppLanguage {
 
 enum HealthDataSource: Equatable {
     case appleHealth
-#if DEBUG
     case mock
-#endif
 }

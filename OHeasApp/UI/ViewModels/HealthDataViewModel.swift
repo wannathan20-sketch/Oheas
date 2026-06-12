@@ -60,6 +60,8 @@ final class HealthDataViewModel: ObservableObject {
     @Published var isDemoMode = false
 #endif
 
+    @Published var healthKitError: String?
+
     @AppStorage("oheas.language") private var languageRawValue = AppLanguage.chinese.rawValue
     private var preferredLanguage: String {
         (AppLanguage(rawValue: languageRawValue) ?? .chinese).rawValue
@@ -93,8 +95,11 @@ final class HealthDataViewModel: ObservableObject {
             dataSource = .appleHealth
             return await buildPipeline(rawDays: raw)
         } catch {
-#if DEBUG
-            errorReporter.record(category: .healthKit, message: error.localizedDescription, context: ["mode": "mockFallback"])
+            let errorMessage = error.localizedDescription
+            print("[OHeas] HealthKit error: \(errorMessage) — falling back to mock")
+            healthKitError = errorMessage
+            errorReporter.record(category: .healthKit, message: errorMessage, context: ["mode": "mockFallback"])
+
             let mock = MockHealthDataProvider()
             do {
                 let raw = try await mock.fetchRawDailyData(days: days)
@@ -106,11 +111,6 @@ final class HealthDataViewModel: ObservableObject {
                 errorKey = .noMetrics
                 return nil
             }
-#else
-            errorReporter.record(category: .healthKit, message: error.localizedDescription)
-            errorKey = .noMetrics
-            return nil
-#endif
         }
     }
 
