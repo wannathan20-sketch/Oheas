@@ -8,6 +8,7 @@
 
 
 import Foundation
+import HealthKit
 import SwiftUI
 import OHeasCore
 
@@ -78,6 +79,9 @@ final class HealthDataViewModel: ObservableObject {
 #endif
     private let errorReporter: ErrorReporter
 
+    /// Single shared HKHealthStore – Apple requires apps use one store for all interactions.
+    private let healthStore = HKHealthStore()
+
     private(set) var recentDailyMetrics: [DailyHealthMetrics] = []
 
     init(errorReporter: ErrorReporter, fileURL: URL? = nil) {
@@ -89,7 +93,27 @@ final class HealthDataViewModel: ObservableObject {
         isLoading = true
         defer { isLoading = false }
 
-        let provider: HealthDataProvider = HealthKitReader()
+        // Pre-authorize HealthKit with the shared store (retained, main-thread).
+        // This must happen before fetching data so the system dialog appears
+        // at the right time and the store's authorization state is consistent.
+        let types: Set<HKObjectType> = [
+            HKObjectType.categoryType(forIdentifier: .sleepAnalysis)!,
+            HKObjectType.quantityType(forIdentifier: .heartRateVariabilitySDNN)!,
+            HKObjectType.quantityType(forIdentifier: .restingHeartRate)!,
+            HKObjectType.quantityType(forIdentifier: .stepCount)!,
+            HKObjectType.quantityType(forIdentifier: .activeEnergyBurned)!,
+            HKObjectType.quantityType(forIdentifier: .appleExerciseTime)!,
+            HKObjectType.workoutType()
+        ]
+        do {
+            try await healthStore.requestAuthorization(toShare: [], read: types)
+        } catch {
+            print("[OHeas] HealthKit authorization error: \(error.localizedDescription)")
+            healthKitError = error.localizedDescription
+            // Fall through to try HealthKitReader anyway – it will re-attempt auth
+        }
+
+        let provider: HealthDataProvider = HealthKitReader(healthStore: healthStore)
         do {
             let raw = try await provider.fetchRawDailyData(days: days)
             dataSource = .appleHealth
