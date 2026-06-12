@@ -7,6 +7,7 @@
 //
 
 
+import Combine
 import Foundation
 import SwiftUI
 import OHeasCore
@@ -31,6 +32,8 @@ final class OHeasViewModel: ObservableObject {
     let history: HistoryViewModel
 
     // MARK: - Language
+
+    private var cancellables = Set<AnyCancellable>()
 
     @AppStorage("oheas.language") private var languageRawValue = AppLanguage.chinese.rawValue
     private var preferredLanguage: String {
@@ -222,6 +225,18 @@ final class OHeasViewModel: ObservableObject {
         self.onboarding = OnboardingViewModel(consentManager: consent, errorReporter: reporter)
         self.sync = SyncViewModel(consentManager: consent, errorReporter: reporter)
         self.history = HistoryViewModel()
+
+        // Forward objectWillChange from sub-ViewModels so SwiftUI re-evaluates
+        // computed delegation properties (e.g. onboardingState, authState, isLoading)
+        // when the underlying @Published state changes.
+        healthData.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }.store(in: &cancellables)
+        recommendation.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }.store(in: &cancellables)
+        plan.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }.store(in: &cancellables)
+        memory.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }.store(in: &cancellables)
+        experiment.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }.store(in: &cancellables)
+        onboarding.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }.store(in: &cancellables)
+        sync.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }.store(in: &cancellables)
+        history.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }.store(in: &cancellables)
     }
 
     /// Wire up services that reference each other (avoids circular init dependencies).
