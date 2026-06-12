@@ -96,7 +96,12 @@ public final class HealthKitReader: HealthDataProvider, @unchecked Sendable {
         let samples: [HKCategorySample] = try await withCheckedThrowingContinuation { continuation in
             let query = HKSampleQuery(sampleType: type, predicate: predicate, limit: HKObjectQueryNoLimit, sortDescriptors: nil) { _, samples, error in
                 if let error {
-                    continuation.resume(throwing: error)
+                    let hkError = error as NSError
+                    if hkError.domain == HKErrorDomain, hkError.code == 11 {
+                        continuation.resume(returning: [])
+                    } else {
+                        continuation.resume(throwing: error)
+                    }
                 } else {
                     continuation.resume(returning: samples as? [HKCategorySample] ?? [])
                 }
@@ -125,7 +130,12 @@ public final class HealthKitReader: HealthDataProvider, @unchecked Sendable {
         return try await withCheckedThrowingContinuation { continuation in
             let query = HKSampleQuery(sampleType: type, predicate: predicate, limit: HKObjectQueryNoLimit, sortDescriptors: nil) { _, samples, error in
                 if let error {
-                    continuation.resume(throwing: error)
+                    let hkError = error as NSError
+                    if hkError.domain == HKErrorDomain, hkError.code == 11 {
+                        continuation.resume(returning: [])
+                    } else {
+                        continuation.resume(throwing: error)
+                    }
                 } else {
                     let values = (samples as? [HKQuantitySample] ?? []).map { $0.quantity.doubleValue(for: unit) }
                     continuation.resume(returning: values)
@@ -135,6 +145,9 @@ public final class HealthKitReader: HealthDataProvider, @unchecked Sendable {
         }
     }
 
+    /// Returns `nil` when HealthKit has no data for this predicate
+    /// (HKError.Code.noData = 11) instead of throwing, so one empty metric
+    /// doesn't fail the entire day's fetch.
     private func cumulativeQuantity(
         _ identifier: HKQuantityTypeIdentifier,
         unit: HKUnit,
@@ -147,7 +160,12 @@ public final class HealthKitReader: HealthDataProvider, @unchecked Sendable {
         return try await withCheckedThrowingContinuation { continuation in
             let query = HKStatisticsQuery(quantityType: type, quantitySamplePredicate: predicate, options: .cumulativeSum) { _, statistics, error in
                 if let error {
-                    continuation.resume(throwing: error)
+                    let hkError = error as NSError
+                    if hkError.domain == HKErrorDomain, hkError.code == 11 {
+                        continuation.resume(returning: nil)
+                    } else {
+                        continuation.resume(throwing: error)
+                    }
                 } else {
                     continuation.resume(returning: statistics?.sumQuantity()?.doubleValue(for: unit))
                 }
@@ -163,7 +181,12 @@ public final class HealthKitReader: HealthDataProvider, @unchecked Sendable {
         let samples: [HKWorkout] = try await withCheckedThrowingContinuation { continuation in
             let query = HKSampleQuery(sampleType: type, predicate: predicate, limit: HKObjectQueryNoLimit, sortDescriptors: nil) { _, samples, error in
                 if let error {
-                    continuation.resume(throwing: error)
+                    let hkError = error as NSError
+                    if hkError.domain == HKErrorDomain, hkError.code == 11 {
+                        continuation.resume(returning: [])
+                    } else {
+                        continuation.resume(throwing: error)
+                    }
                 } else {
                     continuation.resume(returning: samples as? [HKWorkout] ?? [])
                 }
