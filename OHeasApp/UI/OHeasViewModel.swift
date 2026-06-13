@@ -398,6 +398,97 @@ final class OHeasViewModel: ObservableObject {
         )
     }
 
+    // MARK: - Bidirectional Sync Merge
+
+    /// Merge records pulled from the backend into local stores.
+    ///
+    /// Called after `sync.syncNow()` completes to apply remote changes
+    /// (e.g. from another device) to local persistence.
+    func mergePulledRecords() {
+        let records = sync.pulledRecords
+        guard !records.isEmpty else { return }
+
+        for record in records {
+            do {
+                try applyRemoteRecord(record)
+            } catch {
+                // Skip records that fail to decode or save — the next pull will retry.
+            }
+        }
+        sync.clearPulledRecords()
+    }
+
+    private func applyRemoteRecord(_ record: SyncRecord) throws {
+        let decoder = JSONDecoder.oheas
+        guard let data = record.payload.data(using: .utf8) else { return }
+
+        switch record.entityType {
+        case .coachRecommendation:
+            let obj = try decoder.decode(CoachRecommendation.self, from: data)
+            try RecommendationHistoryStore(fileURL: OHeasStorageURLs.recommendations).save(obj)
+
+        case .dailyFeedback:
+            let obj = try decoder.decode(DailyFeedback.self, from: data)
+            try FeedbackStore(fileURL: OHeasStorageURLs.feedback).save(obj)
+
+        case .verificationReport:
+            let obj = try decoder.decode(VerificationReport.self, from: data)
+            try VerificationReportStore(fileURL: OHeasStorageURLs.verificationReports).save(obj)
+
+        case .userMemory:
+            // Memory is complex — only restore if local is empty (new device).
+            let store = MemoryStore(fileURL: OHeasStorageURLs.memory)
+            let localMemory = (try? store.loadMemory()) ?? UserMemory()
+            if localMemory.knownPatterns.isEmpty && localMemory.interventionRecords.isEmpty {
+                let obj = try decoder.decode(UserMemory.self, from: data)
+                try store.saveMemory(obj)
+            }
+
+        case .personalExperiment:
+            let obj = try decoder.decode(PersonalExperiment.self, from: data)
+            var experiments = (try? ExperimentStore(fileURL: OHeasStorageURLs.experiments).loadExperiments()) ?? []
+            if let idx = experiments.firstIndex(where: { $0.id == obj.id }) {
+                // Keep the newer one (last-write-wins).
+                if record.updatedAt > experiments[idx].updatedAt {
+                    experiments[idx] = obj
+                }
+            } else {
+                experiments.append(obj)
+            }
+            try ExperimentStore(fileURL: OHeasStorageURLs.experiments).saveExperiments(experiments)
+
+        case .weeklyPlan:
+            let obj = try decoder.decode(WeeklyPlan.self, from: data)
+            try PlanStore(fileURL: OHeasStorageURLs.weeklyPlans).saveCurrentWeekPlan(obj)
+
+        case .weeklyReview:
+            let obj = try decoder.decode(WeeklyReview.self, from: data)
+            let reviewStore = CodableFileStore<WeeklyReview>(fileURL: OHeasStorageURLs.weeklyReviews)
+            var reviews = (try? reviewStore.load()) ?? []
+            if let idx = reviews.firstIndex(where: { $0.id == obj.id }) {
+                if record.updatedAt > reviews[idx].createdAt {
+                    reviews[idx] = obj
+                }
+            } else {
+                reviews.append(obj)
+            }
+            try reviewStore.save(reviews)
+
+        case .userGoal:
+            let obj = try decoder.decode(UserGoal.self, from: data)
+            try GoalStore(fileURL: OHeasStorageURLs.goals).addGoal(obj)
+
+        case .privacySettings:
+            // Local privacy settings always win — skip.
+            break
+
+        case .dailyHealthMetrics, .dataQualityReport, .safetyAssessment,
+             .effectivenessReport, .betaAnalyticsEvent:
+            // Computed locally or ephemeral — skip.
+            break
+        }
+    }
+
     func refreshRecommendation(aiEnabled: Bool) async {
         guard let context = agentContext else { return }
         await recommendation.generateRecommendation(
@@ -564,7 +655,10 @@ final class OHeasViewModel: ObservableObject {
 
     // MARK: - Sync
 
-    func syncNow() async { await sync.syncNow() }
+    func syncNow() async {
+        await sync.syncNow()
+        mergePulledRecords()
+    }
     func pauseSync() { sync.pauseSync() }
     func resumeSync() { sync.resumeSync() }
 

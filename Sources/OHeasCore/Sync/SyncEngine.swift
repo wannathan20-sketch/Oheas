@@ -112,15 +112,32 @@ public struct SyncRecord: Codable, Equatable, Identifiable, Sendable {
 
 public struct SyncState: Codable, Equatable, Sendable {
     public var lastSyncedAt: Date?
+    public var lastPulledAt: Date?
     public var mode: SyncMode
     public var pendingCount: Int
     public var lastError: String?
 
-    public init(lastSyncedAt: Date? = nil, mode: SyncMode = .localOnly, pendingCount: Int = 0, lastError: String? = nil) {
+    public init(lastSyncedAt: Date? = nil, lastPulledAt: Date? = nil, mode: SyncMode = .localOnly, pendingCount: Int = 0, lastError: String? = nil) {
         self.lastSyncedAt = lastSyncedAt
+        self.lastPulledAt = lastPulledAt
         self.mode = mode
         self.pendingCount = pendingCount
         self.lastError = lastError
+    }
+}
+
+/// Result of a pull operation from the backend.
+public struct SyncPullResult: Codable, Equatable, Sendable {
+    /// Records fetched from the backend (newer than last pull).
+    public var records: [SyncRecord]
+    /// Server timestamp at the moment of the pull.
+    public var serverTime: Date
+    /// Number of records that were new or updated.
+    public var count: Int { records.count }
+
+    public init(records: [SyncRecord], serverTime: Date) {
+        self.records = records
+        self.serverTime = serverTime
     }
 }
 
@@ -208,6 +225,21 @@ public struct SyncEngine: Sendable {
         state.pendingCount = queue.filter { $0.status == .pending || $0.status == .failed }.count
         try? saveState(state)
         return state
+    }
+
+    /// Pull remote changes from the backend since the last pull timestamp.
+    ///
+    /// Call this after `syncNow()` to fetch changes made by other devices.
+    /// Returns the pulled records so the caller can merge them into local stores.
+    public func pullRemoteChanges(userId: UUID) async throws -> SyncPullResult {
+        var state = loadState()
+        guard state.mode == .cloudEnabled, consentManager?.hasConsent(.cloudSync) == true else {
+            return SyncPullResult(records: [], serverTime: Date())
+        }
+        let records = try await apiClient.fetchRemoteChanges(since: state.lastPulledAt, userId: userId)
+        state.lastPulledAt = Date()
+        try? saveState(state)
+        return SyncPullResult(records: records, serverTime: state.lastPulledAt ?? Date())
     }
 
     public func pendingRecords() -> [SyncRecord] {

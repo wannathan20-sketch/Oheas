@@ -1005,6 +1005,63 @@ struct OHeasCoreTests {
         #expect(engine.resolveConflict(local: local, remote: remote).payload == "local")
     }
 
+    @Test("Pull remote changes returns records from backend")
+    func pullRemoteChangesFromBackend() async throws {
+        let directory = tempDirectory()
+        let consent = ConsentManager(fileURL: directory.appendingPathComponent("consent.json"))
+        try consent.recordConsent(type: .cloudSync, accepted: true, textSummary: "ok")
+
+        // Backend that returns 2 remote records.
+        let backend = SpyBackendClient()
+        let remote1 = SyncRecord(entityType: .coachRecommendation, entityId: "rec1", operation: .upsert, payload: "test1", updatedAt: Date())
+        let remote2 = SyncRecord(entityType: .dailyFeedback, entityId: "fb1", operation: .upsert, payload: "test2", updatedAt: Date())
+        backend.fetchResult = [remote1, remote2]
+
+        let engine = SyncEngine(queueURL: directory.appendingPathComponent("queue.json"), stateURL: directory.appendingPathComponent("state.json"), apiClient: backend, consentManager: consent)
+        try engine.resumeCloudSync()
+
+        let result = try await engine.pullRemoteChanges(userId: UUID())
+        #expect(result.records.count == 2)
+        #expect(result.records[0].entityId == "rec1")
+        #expect(result.records[1].entityId == "fb1")
+    }
+
+    @Test("Pull without cloud consent returns empty")
+    func pullWithoutConsentReturnsEmpty() async throws {
+        let directory = tempDirectory()
+        let consent = ConsentManager(fileURL: directory.appendingPathComponent("consent.json"))
+        // No consent — stays localOnly.
+        let backend = SpyBackendClient()
+        backend.fetchResult = [SyncRecord(entityType: .coachRecommendation, entityId: "r", operation: .upsert, payload: "x")]
+
+        let engine = SyncEngine(queueURL: directory.appendingPathComponent("queue.json"), stateURL: directory.appendingPathComponent("state.json"), apiClient: backend, consentManager: consent)
+        let result = try await engine.pullRemoteChanges(userId: UUID())
+        #expect(result.records.isEmpty)
+    }
+
+    @Test("SyncState tracks lastPulledAt for incremental pull")
+    func syncStateTracksLastPulledAt() async throws {
+        let directory = tempDirectory()
+        let consent = ConsentManager(fileURL: directory.appendingPathComponent("consent.json"))
+        try consent.recordConsent(type: .cloudSync, accepted: true, textSummary: "ok")
+
+        let backend = SpyBackendClient()
+        backend.fetchResult = [SyncRecord(entityType: .coachRecommendation, entityId: "r", operation: .upsert, payload: "x")]
+
+        let engine = SyncEngine(queueURL: directory.appendingPathComponent("queue.json"), stateURL: directory.appendingPathComponent("state.json"), apiClient: backend, consentManager: consent)
+        try engine.resumeCloudSync()
+
+        // First pull.
+        _ = try await engine.pullRemoteChanges(userId: UUID())
+        let state = engine.loadState()
+        #expect(state.lastPulledAt != nil)
+
+        // Second pull: backend returns empty (no new changes since).
+        backend.fetchResult = []
+        let result2 = try await engine.pullRemoteChanges(userId: UUID())
+        #expect(result2.records.isEmpty)
+    }
+
     @Test("Onboarding state gates main app")
     func onboardingStateGatesMainApp() {
         let initial = OnboardingState()
@@ -1569,6 +1626,7 @@ private final class SpyBackendClient: BackendAPIClientProtocol, @unchecked Senda
     var analyticsUploads = 0
     var syncUploads = 0
     var shouldFail: Bool
+    var fetchResult: [SyncRecord] = []
 
     init(shouldFail: Bool = false) {
         self.shouldFail = shouldFail
@@ -1595,7 +1653,10 @@ private final class SpyBackendClient: BackendAPIClientProtocol, @unchecked Senda
         syncUploads += 1
     }
 
-    func fetchRemoteChanges(since: Date?, userId: UUID) async throws -> [SyncRecord] { [] }
+    func fetchRemoteChanges(since: Date?, userId: UUID) async throws -> [SyncRecord] {
+        try maybeFail()
+        return fetchResult
+    }
     func markDeleted(entityType: SyncEntityType, id: String, userId: UUID) async throws { try maybeFail() }
 
     private func maybeFail() throws {

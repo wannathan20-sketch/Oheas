@@ -502,13 +502,37 @@ final class SyncViewModel: ObservableObject {
 
     // MARK: - Sync
 
+    /// Records pulled from the backend during the last sync. Cleared after merge.
+    @Published var pulledRecords: [SyncRecord] = []
+
     func syncNow() async {
         guard let userId = currentUser?.id else { return }
+
+        // 1. Push local changes to backend.
         syncState = await syncEngine.syncNow(userId: userId)
+
+        // 2. Pull remote changes from backend (bidirectional sync).
+        if syncState.mode == .cloudEnabled {
+            do {
+                let result = try await syncEngine.pullRemoteChanges(userId: userId)
+                if !result.records.isEmpty {
+                    pulledRecords = result.records
+                }
+            } catch {
+                syncState.lastError = "Pull failed: \(error.localizedDescription)"
+                errorReporter.record(category: .sync, message: syncState.lastError ?? "Pull failed")
+            }
+        }
+
         if syncState.lastError != nil {
             errorReporter.record(category: .sync, message: syncState.lastError ?? "Sync failed")
         }
         analyticsSummary = analyticsService.summary()
+    }
+
+    /// Call this after the caller has merged pulled records into local stores.
+    func clearPulledRecords() {
+        pulledRecords = []
     }
 
     func pauseSync() {
