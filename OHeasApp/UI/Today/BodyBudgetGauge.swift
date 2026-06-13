@@ -12,8 +12,11 @@
 import OHeasCore
 import SwiftUI
 
-/// Recovery detail card showing three key metrics with sparklines,
+/// Recovery detail card showing three key metrics as horizontal columns,
 /// a category-driven explanation, signal summaries, and contribution breakdown.
+///
+/// Phase 23: transformed from vertical rows to horizontal 3-column compact strip
+/// with sparklines, following the Oura Recovery compact layout pattern.
 struct BodyBudgetGauge: View {
     let score: BodyBudgetScore?
     let today: DailyHealthMetrics
@@ -22,27 +25,51 @@ struct BodyBudgetGauge: View {
     let recentDailyMetrics: [DailyHealthMetrics]
     let language: AppLanguage
 
+    // MARK: - Cached sparkline data
+
+    private struct SparklineCache {
+        let sleep: [Double?]
+        let hrv: [Double?]
+        let rhr: [Double?]
+    }
+
+    private var sparklineCache: SparklineCache {
+        let recent = recentDailyMetrics.suffix(7)
+        return SparklineCache(
+            sleep: recent.map(\.sleepHours),
+            hrv: recent.map(\.hrv),
+            rhr: recent.map(\.restingHeartRate)
+        )
+    }
+
     var body: some View {
         VStack(spacing: 12) {
-            // Three key recovery metrics with sparklines (full width)
-            VStack(spacing: 10) {
-                gaugeMetricRow(
-                    icon: "bed.double.fill", color: OhColor.sleep,
+            // Three key recovery metrics — horizontal 3-column layout
+            HStack(alignment: .top, spacing: 4) {
+                let cache = sparklineCache
+                metricColumn(
                     label: language.metric(.sleepHours),
-                    value: today.sleepHours.map { String(format: "%.1fh", $0) } ?? language.missing,
-                    sparkline: recentDailyMetrics.suffix(7).map(\.sleepHours)
+                    icon: "bed.double.fill",
+                    color: OhColor.sleep,
+                    value: today.sleepHours.map { String(format: "%.1f", $0) } ?? language.missing,
+                    unit: "h",
+                    sparkline: cache.sleep
                 )
-                gaugeMetricRow(
-                    icon: "waveform.path.ecg", color: OhColor.hrv,
+                metricColumn(
                     label: language.metric(.hrv),
-                    value: today.hrv.map { String(format: "%.0fms", $0) } ?? language.missing,
-                    sparkline: recentDailyMetrics.suffix(7).map(\.hrv)
+                    icon: "waveform.path.ecg",
+                    color: OhColor.hrv,
+                    value: today.hrv.map { String(format: "%.0f", $0) } ?? language.missing,
+                    unit: "ms",
+                    sparkline: cache.hrv
                 )
-                gaugeMetricRow(
-                    icon: "heart.fill", color: OhColor.restingHR,
+                metricColumn(
                     label: language.metric(.restingHeartRate),
-                    value: today.restingHeartRate.map { String(format: "%.0fbpm", $0) } ?? language.missing,
-                    sparkline: recentDailyMetrics.suffix(7).map(\.restingHeartRate)
+                    icon: "heart.fill",
+                    color: OhColor.restingHR,
+                    value: today.restingHeartRate.map { String(format: "%.0f", $0) } ?? language.missing,
+                    unit: "bpm",
+                    sparkline: cache.rhr
                 )
             }
 
@@ -77,6 +104,68 @@ struct BodyBudgetGauge: View {
         .shadow(color: .black.opacity(OhShadow.card.opacity), radius: OhShadow.card.radius, y: OhShadow.card.y)
     }
 
+    // MARK: - Metric column
+
+    /// A single compact metric column: icon + label, value with unit,
+    /// mini sparkline, and trend direction word.
+    private func metricColumn(
+        label: String, icon: String, color: Color,
+        value: String, unit: String, sparkline: [Double?]
+    ) -> some View {
+        VStack(spacing: 4) {
+            // Header: icon + metric name
+            HStack(spacing: 3) {
+                Image(systemName: icon)
+                    .font(.system(size: 9))
+                    .foregroundStyle(color)
+                Text(label)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+
+            // Value + unit (header style: "睡眠 7.2h ↑")
+            HStack(alignment: .firstTextBaseline, spacing: 2) {
+                Text(value)
+                    .font(.subheadline.weight(.bold))
+                Text(unit)
+                    .font(.system(size: 8))
+                    .foregroundStyle(.secondary)
+                if let trend = sparklineTrend(sparkline) {
+                    Image(systemName: trendArrow(trend))
+                        .font(.system(size: 8, weight: .bold))
+                        .foregroundStyle(trendColor(trend))
+                }
+            }
+
+            // Mini sparkline
+            SparklineView(values: sparkline, color: color)
+                .frame(width: 50, height: 20)
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    // MARK: - Sparkline trend helpers
+
+    private func sparklineTrend(_ values: [Double?]) -> Trend.Direction? {
+        Trend.compute(from: values)?.direction
+    }
+
+    private func trendArrow(_ direction: Trend.Direction) -> String {
+        switch direction {
+        case .up: "arrow.up"
+        case .down: "arrow.down"
+        case .flat: "arrow.right"
+        }
+    }
+
+    private func trendColor(_ direction: Trend.Direction) -> Color {
+        switch direction {
+        case .up: OhColor.success
+        case .down: OhColor.warning
+        case .flat: .secondary
+        }
+    }
+
     // MARK: - Helpers
 
     private var explanationText: String {
@@ -96,29 +185,6 @@ struct BodyBudgetGauge: View {
             return String(format: language.text(.signalSummaryHigh), highCount)
         }
         return String(format: language.text(.signalSummaryGeneral), detectedSignals.count)
-    }
-
-    private func gaugeMetricRow(icon: String, color: Color, label: String, value: String, sparkline: [Double?]) -> some View {
-        HStack(spacing: 8) {
-            Image(systemName: icon)
-                .font(.caption)
-                .foregroundStyle(color)
-                .frame(width: 16)
-
-            Text(label)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .frame(width: 36, alignment: .leading)
-
-            Text(value)
-                .font(.subheadline.weight(.semibold))
-
-            Spacer()
-
-            SparklineView(values: sparkline, color: color)
-                .frame(width: 50)
-        }
-        .padding(.vertical, 2)
     }
 }
 

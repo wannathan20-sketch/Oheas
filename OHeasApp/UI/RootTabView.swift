@@ -13,7 +13,11 @@ enum AppTab: Hashable {
 
 struct RootTabView: View {
     @ObservedObject var viewModel: OHeasViewModel
-    @Environment(\.appLanguage) private var language
+    /// Read language directly from UserDefaults instead of @Environment,
+    /// because TabView can break environment propagation in some SwiftUI versions.
+    private var language: AppLanguage {
+        AppLanguage(rawValue: UserDefaults.standard.string(forKey: "oheas.language") ?? AppLanguage.chinese.rawValue) ?? .chinese
+    }
     @State private var selectedTab: AppTab = .today
     /// Shared pending chat prompt — set by TodayView chips, read & cleared by ChatView.
     @State private var pendingChatPrompt: String?
@@ -50,7 +54,7 @@ struct RootTabView: View {
                 }
                 .tag(AppTab.today)
 
-            PlanTabView(viewModel: viewModel, language: language)
+            PlanTabView(planVM: viewModel.plan, viewModel: viewModel, language: language)
                 .tabItem {
                     Label(language.text(.planTab), systemImage: selectedTab == .plan
                           ? "calendar.badge.clock" : "calendar")

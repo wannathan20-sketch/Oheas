@@ -134,8 +134,6 @@ struct AchievementsView: View {
             Divider()
 
             if let snapshot {
-                let earnedIds = Set(snapshot.earnedBadges.map(\.badgeId))
-
                 ForEach(BadgeCategory.allCases, id: \.self) { category in
                     let badges = BadgeRegistry.all.filter { $0.category == category }
                     if !badges.isEmpty {

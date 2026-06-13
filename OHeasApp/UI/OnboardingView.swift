@@ -12,7 +12,10 @@ import SwiftUI
 
 struct OnboardingView: View {
     @ObservedObject var viewModel: OHeasViewModel
-    @Environment(\.appLanguage) private var language
+    /// Read language directly from UserDefaults — see RootTabView for rationale.
+    private var language: AppLanguage {
+        AppLanguage(rawValue: UserDefaults.standard.string(forKey: "oheas.language") ?? AppLanguage.chinese.rawValue) ?? .chinese
+    }
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     @State private var currentStep: Int = 0
@@ -128,7 +131,7 @@ struct OnboardingView: View {
         }
     }
 
-    // MARK: - Goal Card (Step 1)
+    // MARK: - Goal Card (Step 0)
 
     private var goalCard: some View {
         VStack(alignment: .leading, spacing: CardStyle.innerSpacing) {
@@ -141,34 +144,94 @@ struct OnboardingView: View {
             }
             Stepper("\(language.text(.weeklyFrequency)): \(Int(frequency))", value: $frequency, in: 1...7, step: 1)
 
-            nextStepButton(0)
+            nextStepButton(from: 0)
         }
         .cardBackground()
     }
 
-    // MARK: - HealthKit Card (Step 2)
+    // MARK: - HealthKit Step (Step 1)
 
-    private var healthKitCard: some View {
-        VStack(alignment: .leading, spacing: CardStyle.innerSpacing) {
-            Label(language.text(.healthKitPermission), systemImage: "heart.text.square")
-                .font(.headline)
-            Text(language.text(.permissionWhyDescription))
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-            Button {
-                viewModel.skipHealthKitDuringOnboarding()
-            } label: {
-                Label(language.text(.continueLimitedMode), systemImage: "applewatch.slash")
+    private var healthKitStep: some View {
+        VStack(alignment: .leading, spacing: CardStyle.gap) {
+            VStack(alignment: .leading, spacing: CardStyle.innerSpacing) {
+                Label(language.text(.healthKitPermission), systemImage: "heart.text.square")
+                    .font(.headline)
+                Text(language.text(.permissionWhyDescription))
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
             }
-            .buttonStyle(.bordered)
-            .pressableScale()
+            .cardBackground()
+            nextStepButton(from: 1)
         }
-        .cardBackground()
+    }
+
+    // MARK: - Privacy Step (Step 2)
+
+    private var privacyStep: some View {
+        VStack(alignment: .leading, spacing: CardStyle.gap) {
+            VStack(alignment: .leading, spacing: CardStyle.innerSpacing) {
+                Label(language.text(.privacyLabel), systemImage: "lock.shield")
+                    .font(.headline)
+                Toggle(language.text(.useLLMToggle), isOn: $useLLM)
+                Toggle(language.text(.enableCloudSyncToggle), isOn: $cloudSync)
+                Toggle(language.text(.shareBetaAnalyticsToggle), isOn: $betaAnalytics)
+                Text(language.text(.onboardingRawSamplesNote))
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+            .cardBackground()
+
+            VStack(alignment: .leading, spacing: CardStyle.innerSpacing) {
+                Label(language.text(.aiConsentLabel), systemImage: "brain")
+                    .font(.headline)
+                Text(language.text(.onboardingAINote))
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+            .cardBackground()
+
+            nextStepButton(from: 2)
+        }
+    }
+
+    // MARK: - Ready Step (Step 3)
+
+    private var readyStep: some View {
+        VStack(alignment: .leading, spacing: CardStyle.gap) {
+            VStack(alignment: .leading, spacing: CardStyle.innerSpacing) {
+                Label(language.text(.baselineLabel), systemImage: "chart.bar")
+                    .font(.headline)
+                Text(baselineMessage)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+            .cardBackground()
+
+            VStack(alignment: .leading, spacing: CardStyle.innerSpacing) {
+                Label(language.text(.firstRecommendationLabel), systemImage: "sparkles")
+                    .font(.headline)
+                Text(firstRecommendationText)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+            .cardBackground()
+
+            Button {
+                applyChoices()
+                viewModel.completeOnboarding()
+            } label: {
+                Label(language.text(.startButton), systemImage: "checkmark.circle")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.borderedProminent)
+            .pressableScale()
+            .padding(.top, Spacing.sm)
+        }
     }
 
     // MARK: - Next Step Button
 
-    private func nextStepButton(_ fromStep: Int) -> some View {
+    private func nextStepButton(from fromStep: Int) -> some View {
         let isLastAction = fromStep == totalSteps - 2
         return Button {
             withAnimation(.spring(response: 0.44, dampingFraction: 0.86)) {
@@ -185,104 +248,11 @@ struct OnboardingView: View {
         .pressableScale()
     }
 
-    // MARK: - HealthKit Step (Step 2)
-
-    private var healthKitStep: some View {
-        VStack(alignment: .leading, spacing: CardStyle.gap) {
-            healthKitCard
-            nextStepButton(1)
-        }
-    }
-
-    // MARK: - Privacy Step (Step 3)
-
-    private var privacyStep: some View {
-        VStack(alignment: .leading, spacing: CardStyle.gap) {
-            privacyCard
-            aiConsentCard
-            nextStepButton(2)
-        }
-    }
-
-    // MARK: - Ready Step (Step 4)
-
-    private var readyStep: some View {
-        VStack(alignment: .leading, spacing: CardStyle.gap) {
-            baselineCard
-            firstRecommendationCard
-            Button {
-                applyChoices()
-                viewModel.completeOnboarding()
-            } label: {
-                Label(language.text(.startButton), systemImage: "checkmark.circle")
-                    .frame(maxWidth: .infinity)
-            }
-            .buttonStyle(.borderedProminent)
-            .pressableScale()
-            .padding(.top, Spacing.sm)
-        }
-    }
-
-    // MARK: - Privacy Card (Step 3)
-
-    private var privacyCard: some View {
-        VStack(alignment: .leading, spacing: CardStyle.innerSpacing) {
-            Label(language.text(.privacyLabel), systemImage: "lock.shield")
-                .font(.headline)
-            Toggle(language.text(.useLLMToggle), isOn: $useLLM)
-            Toggle(language.text(.enableCloudSyncToggle), isOn: $cloudSync)
-            Toggle(language.text(.shareBetaAnalyticsToggle), isOn: $betaAnalytics)
-            Text(language.text(.onboardingRawSamplesNote))
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-        }
-        .cardBackground()
-    }
-
-    // MARK: - AI Consent Card (Step 3)
-
-    private var aiConsentCard: some View {
-        VStack(alignment: .leading, spacing: CardStyle.innerSpacing) {
-            Label(language.text(.aiConsentLabel), systemImage: "brain")
-                .font(.headline)
-            Text(language.text(.onboardingAINote))
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-        }
-        .cardBackground()
-    }
-
-    // MARK: - Baseline Card (Step 4)
-
-    private var baselineCard: some View {
-        VStack(alignment: .leading, spacing: CardStyle.innerSpacing) {
-            Label(language.text(.baselineLabel), systemImage: "chart.bar")
-                .font(.headline)
-            Text(baselineMessage)
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-        }
-        .cardBackground()
-    }
-
-    /// Localized baseline status, replaces English‑only `OnboardingFlow.baselineMessage()`.
+    /// Localized baseline status.
     private var baselineMessage: String {
         let metrics = viewModel.todayMetrics.map { [$0] } ?? []
         let recoveryDays = metrics.filter { $0.sleepHours != nil && $0.hrv != nil }.count
         return language.text(recoveryDays < 7 ? .baselineLimited : .baselineReady)
-    }
-
-    // MARK: - First Recommendation Card (Step 4)
-
-    private var firstRecommendationCard: some View {
-        VStack(alignment: .leading, spacing: CardStyle.innerSpacing) {
-            Label(language.text(.firstRecommendationLabel), systemImage: "sparkles")
-                .font(.headline)
-            Text(firstRecommendationText)
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-        }
-        .cardBackground()
     }
 
     /// Show the LLM recommendation, but fall back to the localized placeholder
@@ -292,7 +262,6 @@ struct OnboardingView: View {
               !text.isEmpty
         else { return language.text(.firstRecommendationFallback) }
 
-        // If the user prefers Chinese but the text is mostly ASCII, trust the fallback.
         if language == .chinese, text.unicodeScalars.filter({ $0.value > 127 }).count < 5 {
             return language.text(.firstRecommendationFallback)
         }

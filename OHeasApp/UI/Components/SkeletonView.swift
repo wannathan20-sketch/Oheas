@@ -15,6 +15,7 @@ import SwiftUI
 /// Use in combination with `.redacted(reason: .placeholder)` for a loading skeleton effect.
 struct ShimmerEffect: ViewModifier {
     @State private var phase: CGFloat = -1
+    let reduceMotion: Bool
 
     func body(content: Content) -> some View {
         content
@@ -34,6 +35,7 @@ struct ShimmerEffect: ViewModifier {
                 .mask(content)
             )
             .onAppear {
+                guard !reduceMotion else { return }
                 withAnimation(OhAnimation.shimmer) {
                     phase = 1
                 }
@@ -42,8 +44,8 @@ struct ShimmerEffect: ViewModifier {
 }
 
 extension View {
-    func shimmer() -> some View {
-        modifier(ShimmerEffect())
+    func shimmer(reduceMotion: Bool = false) -> some View {
+        modifier(ShimmerEffect(reduceMotion: reduceMotion))
     }
 }
 
@@ -52,6 +54,7 @@ extension View {
 /// A single skeleton card placeholder with shimmer animation.
 struct SkeletonCard: View {
     let height: CGFloat
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     init(height: CGFloat = 120) {
         self.height = height
@@ -61,7 +64,7 @@ struct SkeletonCard: View {
         RoundedRectangle(cornerRadius: Radius.small)
             .fill(Color(.systemGray5))
             .frame(height: height)
-            .shimmer()
+            .shimmer(reduceMotion: reduceMotion)
     }
 }
 
@@ -71,6 +74,7 @@ struct SkeletonCard: View {
 struct SkeletonSection: View {
     let cardCount: Int
     let cardHeight: CGFloat
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     init(cardCount: Int = 3, cardHeight: CGFloat = 80) {
         self.cardCount = cardCount
@@ -83,7 +87,7 @@ struct SkeletonSection: View {
             RoundedRectangle(cornerRadius: Radius.tiny)
                 .fill(Color(.systemGray4))
                 .frame(width: 120, height: 20)
-                .shimmer()
+                .shimmer(reduceMotion: reduceMotion)
 
             // Card skeletons
             ForEach(0..<cardCount, id: \.self) { _ in

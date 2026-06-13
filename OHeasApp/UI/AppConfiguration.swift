@@ -106,11 +106,16 @@ actor BackendConfigStore {
     private var _baseURL: URL?
     private var _bearerToken: String?
 
+    /// Thread-safe snapshot for synchronous reads (e.g., LLM client creation
+    /// during checkConnection, where we cannot await the actor).
+    nonisolated(unsafe) static var latestConfig: BackendConfiguration = .init()
+
     private init() {}
 
     func configure(baseURL: URL?, bearerToken: String?) {
         _baseURL = baseURL
         _bearerToken = bearerToken
+        Self.latestConfig = BackendConfiguration(baseURL: baseURL, bearerToken: bearerToken)
     }
 
     func currentConfig() -> BackendConfiguration {
@@ -125,11 +130,13 @@ struct BackendAppConfiguration {
     static func load() -> BackendAppConfiguration {
         let environment = ProcessInfo.processInfo.environment
         let bundle = Bundle.main
+        let defaults = UserDefaults.standard
 
+        // Priority: env → UserDefaults → Info.plist → Keychain
         let urlString = environment["OHEAS_BACKEND_URL"]
+            ?? defaults.string(forKey: "OHEAS_BACKEND_URL")
             ?? bundle.object(forInfoDictionaryKey: "OHEAS_BACKEND_URL") as? String
 
-        // Priority: env → Info.plist → Keychain (set by Apple Sign In)
         let token = environment["OHEAS_BACKEND_TOKEN"]
             ?? bundle.object(forInfoDictionaryKey: "OHEAS_BACKEND_TOKEN") as? String
             ?? AuthTokenStore.loadBearerToken()

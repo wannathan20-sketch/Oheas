@@ -48,7 +48,7 @@ struct TodayView: View {
                         .padding(.top, 8)
                     }
 
-                    // 1. Score-first header — big ring + insight
+                    // 1. Score-first header — big ring + insight + compact metric strip
                     if let today = viewModel.todayMetrics, let quality = viewModel.dataQuality {
                         TodaySummaryHeader(
                             score: viewModel.bodyBudgetScore,
@@ -58,7 +58,9 @@ struct TodayView: View {
                             dataSource: viewModel.dataSource,
                             language: language,
                             reduceMotion: reduceMotion,
-                            checkInStreak: viewModel.gamificationSnapshot?.streaks[.checkIn]?.currentStreak ?? 0
+                            checkInStreak: viewModel.gamificationSnapshot?.streaks[.checkIn]?.currentStreak ?? 0,
+                            onTapScoreRing: { onNavigateToChat?("breakdown") },
+                            recentDailyMetrics: viewModel.recentDailyMetrics
                         )
                     } else if viewModel.isLoading {
                         SkeletonLoadingView(sections: [(1, 200)])
@@ -73,6 +75,12 @@ struct TodayView: View {
 
                     VStack(alignment: .leading, spacing: 16) {
                         if let today = viewModel.todayMetrics, let quality = viewModel.dataQuality {
+                            // ── 今日反馈 ──
+                            sectionHeader(
+                                title: language.text(.quickFeedback),
+                                icon: "bubble.left.and.bubble.right.fill"
+                            )
+
                             // 2. AI Coach recommendation
                             AICoachCard(
                                 recommendationResult: viewModel.recommendationResult,
@@ -99,7 +107,7 @@ struct TodayView: View {
                                 },
                                 onDismissInlineResponse: { viewModel.dismissInlineResponse() }
                             )
-                            .softAppear(true, delay: 0.04, reduceMotion: reduceMotion)
+                            .softAppear(true, delay: 0.02, reduceMotion: reduceMotion)
 
                             // 3. Quick feedback + yesterday — directly visible
                             TodayFeedbackPanel(
@@ -115,7 +123,13 @@ struct TodayView: View {
                                 feedbackNote: $viewModel.feedbackNote,
                                 onSaveFeedback: { viewModel.saveFeedback() }
                             )
-                            .softAppear(true, delay: 0.08, reduceMotion: reduceMotion)
+                            .softAppear(true, delay: 0.04, reduceMotion: reduceMotion)
+
+                            // ── 恢复详情 ──
+                            sectionHeader(
+                                title: language.text(.recoverySection),
+                                icon: "heart.text.square.fill"
+                            )
 
                             // 4. Recovery metrics + contribution breakdown
                             BodyBudgetGauge(
@@ -126,7 +140,13 @@ struct TodayView: View {
                                 recentDailyMetrics: viewModel.recentDailyMetrics,
                                 language: language
                             )
-                            .softAppear(true, delay: 0.12, reduceMotion: reduceMotion)
+                            .softAppear(true, delay: 0.06, reduceMotion: reduceMotion)
+
+                            // ── 本周计划 ──
+                            sectionHeader(
+                                title: language.text(.weeklyPlan),
+                                icon: "calendar"
+                            )
 
                             // 5. Weekly plan strip
                             WeeklyPlanStrip(
@@ -134,7 +154,15 @@ struct TodayView: View {
                                 todayDailyPlan: viewModel.todayDailyPlan,
                                 language: language
                             )
-                            .softAppear(true, delay: 0.16, reduceMotion: reduceMotion)
+                            .softAppear(true, delay: 0.08, reduceMotion: reduceMotion)
+
+                            // ── 详细指标 ──
+                            if !viewModel.comparisons.isEmpty {
+                                sectionHeader(
+                                    title: language.text(.metricsTab),
+                                    icon: "chart.bar.fill"
+                                )
+                            }
 
                             // 6. Metrics grid
                             if !viewModel.comparisons.isEmpty {
@@ -144,7 +172,7 @@ struct TodayView: View {
                                     recentDailyMetrics: viewModel.recentDailyMetrics,
                                     language: language
                                 )
-                                .softAppear(true, delay: 0.20, reduceMotion: reduceMotion)
+                                .softAppear(true, delay: 0.10, reduceMotion: reduceMotion)
                             }
 
                             // 7. Signal tags — directly visible when present
@@ -154,7 +182,7 @@ struct TodayView: View {
                                     language: language,
                                     reduceMotion: reduceMotion
                                 )
-                                .softAppear(true, delay: 0.24, reduceMotion: reduceMotion)
+                                .softAppear(true, delay: 0.12, reduceMotion: reduceMotion)
                             }
                         }
                     }
@@ -178,6 +206,23 @@ struct TodayView: View {
                 }
             }
         }
+    }
+
+    // MARK: - Section Headers
+
+    @ViewBuilder
+    private func sectionHeader(title: String, icon: String) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: icon)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+            Text(title)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .textCase(.uppercase)
+            Spacer()
+        }
+        .padding(.top, 4)
     }
 
     // MARK: - Actions

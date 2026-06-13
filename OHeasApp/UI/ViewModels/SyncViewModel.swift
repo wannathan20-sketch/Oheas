@@ -19,6 +19,7 @@ final class SyncViewModel: ObservableObject {
     @Published var authState: AuthState = .localOnly
     @Published var accountEmail = ""
     @Published var accountPassword = ""
+    @Published var accountNickname = ""
     @Published var syncState: SyncState = SyncState()
     @Published var analyticsSummary: BetaAnalyticsSummary = BetaAnalyticsSummary(
         appOpenCount: 0, recommendationGeneratedCount: 0, feedbackRate: 0,
@@ -117,7 +118,10 @@ final class SyncViewModel: ObservableObject {
 
             guard let service = appleAuthService else {
                 authState = .error("Backend not configured")
-                authError = "Backend URL is not set. Configure OHEAS_BACKEND_URL to enable cloud features."
+                authError = authErrorMessage(
+                    "Backend URL is not set. Configure OHEAS_BACKEND_URL to enable cloud features.",
+                    "未配置后端地址。请在 Info.plist 或 Xcode 编译设置中设置 OHEAS_BACKEND_URL 以启用云服务。"
+                )
                 return
             }
 
@@ -138,15 +142,17 @@ final class SyncViewModel: ObservableObject {
                 currentUser = AuthenticatedUser(
                     id: pair.userId,
                     email: credential.email,
-                    displayName: fullName.isEmpty ? nil : fullName,
+                    displayName: pair.nickname ?? (fullName.isEmpty ? nil : fullName),
+                    nickname: pair.nickname,
                     isLocalOnly: false
                 )
+                if let nick = pair.nickname { accountNickname = nick }
                 authState = .signedIn
                 try syncEngine.resumeCloudSync()
                 syncState = syncEngine.loadState()
 
                 // Update BackendConfiguration for sync.
-                if let baseURL = backendBaseURL {
+                if backendBaseURL != nil {
                     BackendAppConfiguration.updateBearerToken(pair.accessToken)
                 }
             } catch {
@@ -177,18 +183,292 @@ final class SyncViewModel: ObservableObject {
         BackendAppConfiguration.clearBearerToken()
     }
 
-    /// Try to restore a previous Apple Sign In session from Keychain.
+    /// Try to restore a previous session (Apple or device) from Keychain.
     func restoreAppleSession() {
         guard let pair = AuthTokenStore.loadTokens() else { return }
         currentUser = AuthenticatedUser(
             id: pair.userId,
             email: nil,
-            displayName: nil,
+            displayName: pair.nickname,
+            nickname: pair.nickname,
             isLocalOnly: false
         )
         authState = .signedIn
-        if let baseURL = backendBaseURL {
+        if let nick = pair.nickname { accountNickname = nick }
+        if backendBaseURL != nil {
             BackendAppConfiguration.updateBearerToken(pair.accessToken)
+        }
+    }
+
+    /// Perform anonymous device login — no Apple ID required.
+    /// Generates a stable device UUID on first launch, exchanges it for a JWT pair.
+    func performDeviceAuth() async {
+        guard let baseURL = backendBaseURL else { return }
+
+        let deviceAuth = DeviceAuthService()
+        do {
+            let pair = try await deviceAuth.login(backendBaseURL: baseURL)
+
+            AuthTokenStore.saveTokens(pair)
+            currentUser = AuthenticatedUser(
+                id: pair.userId,
+                email: nil,
+                displayName: pair.nickname,
+                nickname: pair.nickname,
+                isLocalOnly: false
+            )
+            authState = .signedIn
+            if let nick = pair.nickname { accountNickname = nick }
+
+            BackendAppConfiguration.updateBearerToken(pair.accessToken)
+            try syncEngine.resumeCloudSync()
+            syncState = syncEngine.loadState()
+        } catch {
+            // Device auth is best-effort — if backend is unreachable or
+            // DB is not connected, the app still works in local mode.
+            print("[SyncViewModel] Device auth skipped: \(error.localizedDescription)")
+        }
+    }
+
+    /// Login with email + password. Used for cross-device account recovery
+    /// after binding an email to an existing anonymous or Apple account.
+    func loginWithEmail() async {
+        guard let baseURL = backendBaseURL else {
+            authError = authErrorMessage("Backend URL is not configured. Set OHEAS_BACKEND_URL in Info.plist or Xcode build settings.",
+                                         "未配置后端地址。请在 Info.plist 或 Xcode 编译设置中设置 OHEAS_BACKEND_URL。")
+            return
+        }
+
+        authState = .loading
+        authError = nil
+
+        do {
+            let url = baseURL.appendingPathComponent("v1/auth/email")
+            var request = URLRequest(url: url)
+            request.httpMethod = "POST"
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+            let body = EmailLoginRequest(email: accountEmail, password: accountPassword)
+            request.httpBody = try JSONEncoder().encode(body)
+
+            let (data, response) = try await URLSession.shared.data(for: request)
+
+            guard let http = response as? HTTPURLResponse else {
+                throw AuthError.networkError("Invalid response type")
+            }
+            guard (200..<300).contains(http.statusCode) else {
+                let bodyStr = String(data: data, encoding: .utf8) ?? ""
+                if http.statusCode == 401 {
+                    authError = authErrorMessage("Invalid email or password.",
+                                                 "邮箱或密码错误。")
+                    authState = .localOnly
+                    return
+                }
+                throw AuthError.networkError("Email login failed: HTTP \(http.statusCode) \(bodyStr)")
+            }
+
+            let pair = try JSONDecoder().decode(AuthTokenPair.self, from: data)
+
+            AuthTokenStore.saveTokens(pair)
+            currentUser = AuthenticatedUser(
+                id: pair.userId,
+                email: accountEmail,
+                displayName: pair.nickname,
+                nickname: pair.nickname,
+                isLocalOnly: false
+            )
+            authState = .signedIn
+            if let nick = pair.nickname { accountNickname = nick }
+
+            BackendAppConfiguration.updateBearerToken(pair.accessToken)
+            try syncEngine.resumeCloudSync()
+            syncState = syncEngine.loadState()
+        } catch {
+            authState = .error(error.localizedDescription)
+            authError = error.localizedDescription
+            errorReporter.record(category: .sync, message: "Email login failed: \(error.localizedDescription)")
+        }
+    }
+
+    /// Register a new account with email + password.
+    /// Used for first-time email sign-up (does not require a pre-existing account).
+    func registerWithEmail() async {
+        guard let baseURL = backendBaseURL else {
+            authError = authErrorMessage("Backend URL is not configured. Set OHEAS_BACKEND_URL in Info.plist or Xcode build settings.",
+                                         "未配置后端地址。请在 Info.plist 或 Xcode 编译设置中设置 OHEAS_BACKEND_URL。")
+            return
+        }
+
+        authState = .loading
+        authError = nil
+
+        do {
+            let url = baseURL.appendingPathComponent("v1/auth/register")
+            var request = URLRequest(url: url)
+            request.httpMethod = "POST"
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+            let nickname = accountNickname.trimmingCharacters(in: .whitespaces)
+            let body = EmailRegisterRequest(
+                email: accountEmail,
+                password: accountPassword,
+                nickname: nickname.isEmpty ? nil : nickname
+            )
+            request.httpBody = try JSONEncoder().encode(body)
+
+            let (data, response) = try await URLSession.shared.data(for: request)
+
+            guard let http = response as? HTTPURLResponse else {
+                throw AuthError.networkError("Invalid response type")
+            }
+            guard (200..<300).contains(http.statusCode) else {
+                let bodyStr = String(data: data, encoding: .utf8) ?? ""
+                if http.statusCode == 409 {
+                    authError = authErrorMessage("This email is already registered. Please sign in instead.",
+                                                 "该邮箱已注册，请切换到登录。")
+                    authState = .localOnly
+                    return
+                }
+                throw AuthError.networkError("Email registration failed: HTTP \(http.statusCode) \(bodyStr)")
+            }
+
+            let pair = try JSONDecoder().decode(AuthTokenPair.self, from: data)
+
+            AuthTokenStore.saveTokens(pair)
+            currentUser = AuthenticatedUser(
+                id: pair.userId,
+                email: accountEmail,
+                displayName: pair.nickname,
+                nickname: pair.nickname,
+                isLocalOnly: false
+            )
+            authState = .signedIn
+            if let nick = pair.nickname { accountNickname = nick }
+
+            BackendAppConfiguration.updateBearerToken(pair.accessToken)
+            try syncEngine.resumeCloudSync()
+            syncState = syncEngine.loadState()
+        } catch {
+            authState = .error(error.localizedDescription)
+            authError = error.localizedDescription
+            errorReporter.record(category: .sync, message: "Email registration failed: \(error.localizedDescription)")
+        }
+    }
+
+    /// Bind an email + password to the currently authenticated user.
+    /// This enables cross-device account recovery via email login.
+    func bindEmail() async {
+        guard let baseURL = backendBaseURL else {
+            authError = authErrorMessage("Backend URL is not configured.",
+                                         "未配置后端地址，请先设置服务器地址。")
+            return
+        }
+
+        guard let tokens = AuthTokenStore.loadTokens() else {
+            authError = authErrorMessage("Not authenticated. Please sign in first.",
+                                         "未登录，请先登录。")
+            return
+        }
+
+        authError = nil
+
+        do {
+            let url = baseURL.appendingPathComponent("v1/auth/bind-email")
+            var request = URLRequest(url: url)
+            request.httpMethod = "POST"
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.setValue("Bearer \(tokens.accessToken)", forHTTPHeaderField: "Authorization")
+
+            let body = EmailBindRequest(email: accountEmail, password: accountPassword)
+            request.httpBody = try JSONEncoder().encode(body)
+
+            let (data, response) = try await URLSession.shared.data(for: request)
+
+            guard let http = response as? HTTPURLResponse else {
+                throw AuthError.networkError("Invalid response type")
+            }
+            guard (200..<300).contains(http.statusCode) else {
+                let bodyStr = String(data: data, encoding: .utf8) ?? ""
+                if http.statusCode == 409 {
+                    authError = authErrorMessage("This email is already in use by another account.",
+                                                 "该邮箱已被其他账户使用。")
+                    return
+                }
+                throw AuthError.networkError("Email bind failed: HTTP \(http.statusCode) \(bodyStr)")
+            }
+
+            // Update the local user state to reflect the bound email.
+            currentUser = AuthenticatedUser(
+                id: tokens.userId,
+                email: accountEmail,
+                displayName: currentUser?.displayName,
+                isLocalOnly: false
+            )
+            authError = nil
+            accountPassword = ""
+        } catch {
+            authError = error.localizedDescription
+            errorReporter.record(category: .sync, message: "Email bind failed: \(error.localizedDescription)")
+        }
+    }
+
+    /// Set or change the display nickname for the current user.
+    /// Returns true on success, false if the nickname was taken.
+    func setNickname() async -> Bool {
+        guard let baseURL = backendBaseURL else {
+            authError = authErrorMessage("Backend URL is not configured.",
+                                         "未配置后端地址，请先设置服务器地址。")
+            return false
+        }
+
+        guard let tokens = AuthTokenStore.loadTokens() else {
+            authError = authErrorMessage("Not authenticated. Please sign in first.",
+                                         "未登录，请先登录。")
+            return false
+        }
+
+        let nickname = accountNickname.trimmingCharacters(in: .whitespaces)
+        guard !nickname.isEmpty else { return false }
+
+        authError = nil
+
+        do {
+            let url = baseURL.appendingPathComponent("v1/auth/set-nickname")
+            var request = URLRequest(url: url)
+            request.httpMethod = "POST"
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.setValue("Bearer \(tokens.accessToken)", forHTTPHeaderField: "Authorization")
+
+            let body = SetNicknameRequest(nickname: nickname)
+            request.httpBody = try JSONEncoder().encode(body)
+
+            let (data, response) = try await URLSession.shared.data(for: request)
+
+            guard let http = response as? HTTPURLResponse else {
+                throw AuthError.networkError("Invalid response type")
+            }
+            guard (200..<300).contains(http.statusCode) else {
+                let bodyStr = String(data: data, encoding: .utf8) ?? ""
+                if http.statusCode == 409 {
+                    authError = authErrorMessage("Nickname already taken. Please choose another.",
+                                                 "昵称已被占用，请换一个。")
+                    return false
+                }
+                throw AuthError.networkError("Set nickname failed: HTTP \(http.statusCode) \(bodyStr)")
+            }
+
+            currentUser = AuthenticatedUser(
+                id: tokens.userId,
+                email: currentUser?.email,
+                displayName: nickname,
+                nickname: nickname,
+                isLocalOnly: false
+            )
+            return true
+        } catch {
+            authError = error.localizedDescription
+            errorReporter.record(category: .sync, message: "Set nickname failed: \(error.localizedDescription)")
+            return false
         }
     }
 
@@ -331,6 +611,12 @@ final class SyncViewModel: ObservableObject {
     }
 
     // MARK: - Private
+
+    /// Returns a bilingual error message based on the user's current language preference.
+    private func authErrorMessage(_ en: String, _ zh: String) -> String {
+        let lang = UserDefaults.standard.string(forKey: "oheas.language") ?? AppLanguage.chinese.rawValue
+        return lang == AppLanguage.chinese.rawValue ? zh : en
+    }
 
     private func consentSummary(for type: ConsentType) -> String {
         switch type {

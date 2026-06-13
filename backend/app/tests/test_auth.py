@@ -7,7 +7,7 @@ from httpx import AsyncClient
 
 from app.auth.jwt import create_access_token, create_refresh_token, decode_token
 
-pytestmark = pytest.mark.anyio
+pytestmark = pytest.mark.asyncio
 
 
 # ── JWT unit tests ────────────────────────────────────────────

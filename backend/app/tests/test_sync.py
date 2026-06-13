@@ -9,7 +9,7 @@ from httpx import AsyncClient
 
 from app.auth.jwt import create_access_token
 
-pytestmark = pytest.mark.anyio
+pytestmark = pytest.mark.asyncio
 
 
 def _auth_header(user_id: str = "00000000-0000-0000-0000-000000000001") -> dict:

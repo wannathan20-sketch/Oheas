@@ -12,11 +12,13 @@ import SwiftUI
 
 /// Plan tab that combines weekly plan, goals, experiments, and weekly review
 /// into a single NavigationStack-based hub.
+/// Observes PlanViewModel directly to avoid re-rendering when unrelated sub-VMs change.
 struct PlanTabView: View {
-    @ObservedObject var viewModel: OHeasViewModel
+    @ObservedObject var planVM: PlanViewModel
+    /// Non-observed reference for navigation sub-views that need the full coordinator.
+    let viewModel: OHeasViewModel
     let language: AppLanguage
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var isRegenerating = false
 
     var body: some View {
         NavigationStack {
@@ -26,20 +28,20 @@ struct PlanTabView: View {
                     quickActions
                         .softAppear(true, delay: 0.02, reduceMotion: reduceMotion)
 
-                    if viewModel.isLoading || isRegenerating {
+                    if planVM.isLoading || planVM.isRegenerating {
                         SkeletonSection(cardCount: 1, cardHeight: 100)
                         SkeletonSection(cardCount: 7, cardHeight: 120)
-                    } else if viewModel.todayDailyPlan != nil || viewModel.currentWeeklyPlan != nil {
+                    } else if planVM.todayDailyPlan != nil || planVM.currentWeeklyPlan != nil {
                         // Today's plan
-                        if let today = viewModel.todayDailyPlan {
+                        if let today = planVM.todayDailyPlan {
                             planCard(today, title: language.text(.todayPlan), highlighted: true)
-                                .softAppear(true, delay: 0.08, reduceMotion: reduceMotion)
+                                .softAppear(true, delay: 0.06, reduceMotion: reduceMotion)
                         }
 
                         // Weekly plan
-                        if let plan = viewModel.currentWeeklyPlan {
+                        if let plan = planVM.currentWeeklyPlan {
                             weeklySection(plan)
-                                .softAppear(true, delay: 0.14, reduceMotion: reduceMotion)
+                                .softAppear(true, delay: 0.10, reduceMotion: reduceMotion)
                         }
                     } else {
                         ContentUnavailableView(
@@ -54,7 +56,7 @@ struct PlanTabView: View {
             }
             .background(Color(.systemGroupedBackground))
             .navigationTitle(language.text(.planTab))
-            .animation(OhAnimation.appear(), value: viewModel.isLoading)
+            .animation(OhAnimation.appear(), value: planVM.isLoading)
         }
     }
 
@@ -105,22 +107,13 @@ struct PlanTabView: View {
                     .font(.headline)
                 Spacer()
                 Button {
-                    isRegenerating = true
                     viewModel.regenerateWeeklyPlan()
-                    Task {
-                        try? await Task.sleep(nanoseconds: 1_500_000_000)
-                        await MainActor.run {
-                            withAnimation(OhAnimation.stagger()) {
-                                isRegenerating = false
-                            }
-                        }
-                    }
                 } label: {
                     Label(language.text(.regeneratePlan), systemImage: "arrow.clockwise")
                 }
                 .font(.caption)
                 .pressableScale()
-                .disabled(isRegenerating)
+                .disabled(planVM.isRegenerating)
             }
             Text(plan.strategySummary)
                 .font(.footnote)
@@ -196,10 +189,13 @@ struct PlanTabView: View {
                     .foregroundStyle(.tertiary)
             }
 
-            // Action buttons — compact row
-            if highlighted || day.status != .completed {
+            // Action buttons — compact row (only for today and past days)
+            let isFutureDay = day.date > Date()
+            if (highlighted || day.status != .completed), !isFutureDay {
                 HStack(spacing: 6) {
                     Button {
+                        let impact = UIImpactFeedbackGenerator(style: .medium)
+                        impact.impactOccurred()
                         withAnimation(OhAnimation.stagger()) {
                             viewModel.updateDailyPlanStatus(day, status: .completed)
                         }
@@ -213,6 +209,8 @@ struct PlanTabView: View {
                     .disabled(day.status == .completed)
 
                     Button {
+                        let impact = UIImpactFeedbackGenerator(style: .light)
+                        impact.impactOccurred()
                         withAnimation(OhAnimation.stagger()) {
                             viewModel.updateDailyPlanStatus(day, status: .skipped)
                         }
@@ -241,27 +239,21 @@ struct PlanTabView: View {
                     }
                     .pressableScale()
 
-                    HStack(spacing: 4) {
-                        Button {
-                            withAnimation(OhAnimation.tab()) {
-                                viewModel.replaceDailyPlan(day, type: day.planType, duration: max(5, day.estimatedDurationMinutes - 5))
-                            }
-                        } label: {
-                            Image(systemName: "minus")
-                                .font(.caption)
-                        }
-                        .pressableScale()
-
-                        Button {
-                            withAnimation(OhAnimation.tab()) {
-                                viewModel.replaceDailyPlan(day, type: day.planType, duration: day.estimatedDurationMinutes + 5)
-                            }
-                        } label: {
-                            Image(systemName: "plus")
-                                .font(.caption)
-                        }
-                        .pressableScale()
-                    }
+                    Stepper("",
+                            value: Binding(
+                                get: { day.estimatedDurationMinutes },
+                                set: { newValue in
+                                    let clamped = max(5, newValue)
+                                    withAnimation(OhAnimation.tab()) {
+                                        viewModel.replaceDailyPlan(day, type: day.planType, duration: clamped)
+                                    }
+                                }
+                            ),
+                            in: 5...180,
+                            step: 5
+                    )
+                    .labelsHidden()
+                    .scaleEffect(0.85)
                 }
                 .buttonStyle(.bordered)
             }
@@ -272,11 +264,12 @@ struct PlanTabView: View {
         .overlay {
             RoundedRectangle(cornerRadius: Radius.small)
                 .stroke(
-                    highlighted ? Color.accentColor.opacity(0.25) :
+                    highlighted ? Color.accentColor.opacity(0.4) :
                         statusColor(day.status).opacity(day.status == .planned ? 0 : 0.22),
-                    lineWidth: highlighted ? 1.5 : 1
+                    lineWidth: highlighted ? 2 : 1
                 )
         }
+        .shadow(color: highlighted ? Color.accentColor.opacity(0.15) : .clear, radius: highlighted ? 8 : 0, y: highlighted ? 2 : 0)
         .animation(OhAnimation.stagger(), value: day.status)
     }
 
@@ -319,6 +312,6 @@ struct PlanTabView: View {
 
 #Preview {
     let viewModel = OHeasViewModel()
-    PlanTabView(viewModel: viewModel, language: .chinese)
+    PlanTabView(planVM: viewModel.plan, viewModel: viewModel, language: .chinese)
         .task { await viewModel.load() }
 }

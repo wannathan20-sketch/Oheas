@@ -28,17 +28,32 @@ struct MetricTrendCard: View {
     let language: AppLanguage
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            // Header: icon + name + trend
-            headerRow
+        VStack(spacing: 0) {
+            // 2pt color bar at the top — one-glance metric differentiation
+            Rectangle()
+                .fill(metricColor(metric))
+                .frame(height: 2)
+                .clipShape(
+                    .rect(
+                        topLeadingRadius: Radius.small,
+                        bottomLeadingRadius: 0,
+                        bottomTrailingRadius: 0,
+                        topTrailingRadius: Radius.small
+                    )
+                )
 
-            // Value display
-            valueRow
+            VStack(alignment: .leading, spacing: 6) {
+                // Header: icon + name + trend
+                headerRow
 
-            // Interactive sparkline
-            sparklineSection
+                // Value display
+                valueRow
+
+                // Interactive sparkline
+                sparklineSection
+            }
+            .padding(10)
         }
-        .padding(10)
         .background(OhColor.secondaryGroupedBg)
         .clipShape(RoundedRectangle(cornerRadius: Radius.small))
     }
@@ -91,7 +106,7 @@ struct MetricTrendCard: View {
             Spacer()
 
             // Delta vs baseline
-            if let comp = comparison, let delta = comp.absoluteDelta {
+            if let comp = comparison, comp.absoluteDelta != nil {
                 HStack(spacing: 2) {
                     Image(systemName: deltaText(comp).hasPrefix("+") ? "arrow.up" : "arrow.down")
                         .font(.system(size: 7, weight: .bold))
@@ -115,6 +130,13 @@ struct MetricTrendCard: View {
                 dateFormatter: { formatSparklineDate($0) }
             )
             .frame(maxWidth: .infinity)
+            .overlay(alignment: .bottomTrailing) {
+                Image(systemName: "hand.draw")
+                    .font(.system(size: 8))
+                    .foregroundStyle(.tertiary)
+                    .opacity(0.5)
+                    .padding(2)
+            }
         }
     }
 
@@ -137,7 +159,7 @@ struct MetricTrendCard: View {
     }
 
     private var statusColor: Color {
-        status == .partial ? .secondary : .secondary
+        status == .partial ? .orange : .secondary
     }
 
     private func deltaText(_ comp: MetricComparison) -> String {
@@ -169,10 +191,14 @@ struct MetricTrendCard: View {
         return String(format: "%.1f", value)
     }
 
-    private func formatSparklineDate(_ date: Date) -> String {
+    private static let sparklineDateFormatter: DateFormatter = {
         let f = DateFormatter()
         f.dateFormat = "M/d"
-        return f.string(from: date)
+        return f
+    }()
+
+    private func formatSparklineDate(_ date: Date) -> String {
+        Self.sparklineDateFormatter.string(from: date)
     }
 }
 

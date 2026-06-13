@@ -17,15 +17,6 @@ struct WeeklyPlanStrip: View {
     var body: some View {
         if let plan = currentWeeklyPlan, !plan.days.isEmpty {
             VStack(alignment: .leading, spacing: 10) {
-                HStack {
-                    Label(language.text(.todayPlanHighlight), systemImage: "calendar")
-                        .font(.subheadline.weight(.semibold))
-                    Spacer()
-                    Text(String(format: language.text(.daysCount), plan.days.count))
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-
                 if let today = todayDailyPlan {
                     todayPlanCard(today)
                 }
@@ -109,9 +100,14 @@ struct WeeklyPlanStrip: View {
     }
 
     private func dayOfWeek(_ date: Date) -> String {
-        let formatter = DateFormatter()
-        formatter.locale = language.locale
-        formatter.dateFormat = "EEE"
+        let formatter = Self.dayOfWeekFormatter(locale: language.locale)
         return formatter.string(from: date)
+    }
+
+    private static func dayOfWeekFormatter(locale: Locale) -> DateFormatter {
+        let formatter = DateFormatter()
+        formatter.locale = locale
+        formatter.dateFormat = "EEE"
+        return formatter
     }
 }

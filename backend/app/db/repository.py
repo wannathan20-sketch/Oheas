@@ -34,10 +34,88 @@ class AuthRepository:
             )
             return result.scalar_one_or_none()
 
+    async def find_by_device_id(self, device_id: str) -> AuthUser | None:
+        async with async_session_factory() as session:
+            result = await session.execute(
+                select(AuthUser).where(AuthUser.device_id == device_id)
+            )
+            return result.scalar_one_or_none()
+
+    async def find_by_email(self, email: str) -> AuthUser | None:
+        async with async_session_factory() as session:
+            result = await session.execute(
+                select(AuthUser).where(AuthUser.email == email)
+            )
+            return result.scalar_one_or_none()
+
+    async def find_by_nickname(self, nickname: str) -> AuthUser | None:
+        async with async_session_factory() as session:
+            result = await session.execute(
+                select(AuthUser).where(AuthUser.nickname == nickname)
+            )
+            return result.scalar_one_or_none()
+
     async def create_user(self, apple_user_id: str, full_name: str | None = None) -> AuthUser:
         user = AuthUser(apple_user_id=apple_user_id, full_name=full_name)
         async with async_session_factory() as session:
             session.add(user)
+            await session.commit()
+            await session.refresh(user)
+        return user
+
+    async def create_device_user(self, device_id: str) -> AuthUser:
+        """Create a new user identified only by device ID (anonymous login)."""
+        user = AuthUser(device_id=device_id)
+        async with async_session_factory() as session:
+            session.add(user)
+            await session.commit()
+            await session.refresh(user)
+        return user
+
+    async def update_user_email_password(
+        self, user_id: UUID, email: str, password_hash: str
+    ) -> AuthUser | None:
+        """Set or update email + password for an existing user."""
+        async with async_session_factory() as session:
+            result = await session.execute(
+                select(AuthUser).where(AuthUser.id == user_id)
+            )
+            user = result.scalar_one_or_none()
+            if user is None:
+                return None
+            user.email = email
+            user.password_hash = password_hash
+            user.last_login_at = datetime.now(timezone.utc)
+            await session.commit()
+            await session.refresh(user)
+        return user
+
+    async def create_user_with_email_password(
+        self, email: str, password_hash: str, nickname: str | None = None
+    ) -> AuthUser:
+        """Create a new user with email + password (registration)."""
+        user = AuthUser(
+            email=email,
+            password_hash=password_hash,
+            nickname=nickname,
+        )
+        async with async_session_factory() as session:
+            session.add(user)
+            await session.commit()
+            await session.refresh(user)
+        return user
+
+    async def update_nickname(self, user_id: UUID, nickname: str) -> AuthUser | None:
+        """Set or update the display nickname for a user."""
+        async with async_session_factory() as session:
+            result = await session.execute(
+                select(AuthUser).where(AuthUser.id == user_id)
+            )
+            user = result.scalar_one_or_none()
+            if user is None:
+                return None
+            user.nickname = nickname
+            user.last_login_at = datetime.now(timezone.utc)
             await session.commit()
             await session.refresh(user)
         return user
@@ -51,6 +129,27 @@ class AuthRepository:
             if user is not None:
                 user.last_login_at = datetime.now(timezone.utc)
                 await session.commit()
+
+    async def delete_user(self, user_id: UUID) -> bool:
+        """Permanently delete a user and all associated data (GDPR right to erasure).
+
+        Deletes sync records and the user row in a single transaction.
+        Returns True if a user was deleted, False if not found.
+        """
+        from sqlalchemy import delete
+
+        async with async_session_factory() as session:
+            async with session.begin():
+                # Delete all sync records for this user.
+                await session.execute(
+                    delete(SyncRecordModel).where(SyncRecordModel.user_id == user_id)
+                )
+                # Delete the user.
+                result = await session.execute(
+                    delete(AuthUser).where(AuthUser.id == user_id)
+                )
+                deleted = result.rowcount > 0
+        return deleted
 
 
 class SyncRepository:

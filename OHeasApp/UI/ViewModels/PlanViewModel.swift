@@ -22,6 +22,8 @@ final class PlanViewModel: ObservableObject {
     @Published var newGoalType: UserGoalType = .buildConsistency
     @Published var newGoalFrequency: Double = 5
     @Published var newGoalPriority: GoalPriority = .high
+    @Published var isLoading = false
+    @Published var isRegenerating = false
 
     @AppStorage("oheas.language") private var languageRawValue = AppLanguage.chinese.rawValue
     private var preferredLanguage: String {
@@ -36,11 +38,14 @@ final class PlanViewModel: ObservableObject {
     private let weeklyReviewEngine = WeeklyReviewEngine()
     private let weeklyReviewStore = CodableFileStore<WeeklyReview>(fileURL: OHeasStorageURLs.weeklyReviews)
     private let errorReporter: ErrorReporter
-    private var recommendationStore: RecommendationHistoryStore { RecommendationHistoryStore(fileURL: OHeasStorageURLs.recommendations) }
-    private var feedbackStore: FeedbackStore { FeedbackStore(fileURL: OHeasStorageURLs.feedback) }
-    private var verificationStore: VerificationReportStore { VerificationReportStore(fileURL: OHeasStorageURLs.verificationReports) }
+    private lazy var recommendationStore = RecommendationHistoryStore(fileURL: OHeasStorageURLs.recommendations)
+    private lazy var feedbackStore = FeedbackStore(fileURL: OHeasStorageURLs.feedback)
+    private lazy var verificationStore = VerificationReportStore(fileURL: OHeasStorageURLs.verificationReports)
     private var syncEngine: SyncEngine?
     private var analyticsService: BetaAnalyticsService?
+
+    /// Max number of recent plan adjustments to keep in memory.
+    private let maxRecentAdjustments = 20
 
     init(errorReporter: ErrorReporter) {
         self.errorReporter = errorReporter
@@ -111,6 +116,9 @@ final class PlanViewModel: ObservableObject {
         userMemory: UserMemory,
         activeExperiment: PersonalExperiment?
     ) {
+        isLoading = true
+        defer { isLoading = false }
+
         let weekStart = calendar.oheasWeekStart(for: today.date)
         var plan: WeeklyPlan?
         do {
@@ -175,6 +183,10 @@ final class PlanViewModel: ObservableObject {
                     PlanAdjustment(date: today.date, beforeType: before.planType, afterType: after.planType, reason: after.adjustmentReason ?? automaticAdjustmentReason),
                     at: 0
                 )
+                // Trim to prevent unbounded growth
+                if recentPlanAdjustments.count > maxRecentAdjustments {
+                    recentPlanAdjustments = Array(recentPlanAdjustments.prefix(maxRecentAdjustments))
+                }
                 plan.days[todayIndex] = after
                 do {
                     try planStore.replaceDailyPlan(planId: plan.id, dailyPlan: after)
@@ -212,6 +224,9 @@ final class PlanViewModel: ObservableObject {
         userMemory: UserMemory,
         activeExperiment: PersonalExperiment?
     ) {
+        isRegenerating = true
+        defer { isRegenerating = false }
+
         var recommendations: [CoachRecommendation]
         var feedback: [DailyFeedback]
         do {
@@ -248,6 +263,11 @@ final class PlanViewModel: ObservableObject {
 
     func updateDailyPlanStatus(_ day: DailyPlan, status: DailyPlanStatus) {
         guard let plan = currentWeeklyPlan else { return }
+        // Prevent marking future days as completed/skipped.
+        guard day.date <= Date() else {
+            errorReporter.record(category: .storage, message: "Cannot update plan status for a future date.")
+            return
+        }
         do {
             try planStore.updateDailyPlanStatus(planId: plan.id, dayId: day.id, status: status)
             currentWeeklyPlan = try planStore.getCurrentWeekPlan()

@@ -59,12 +59,14 @@ final class OnboardingViewModel: ObservableObject {
         analyticsService.map { _ = try? $0.record(eventType: .onboardingCompleted, userId: "local") }
     }
 
-    func skipHealthKitDuringOnboarding() {
-        onboardingState = OnboardingFlow().healthKitRejected(onboardingState)
+    /// Mark the auth page as completed (either by signing in or skipping).
+    /// After this, the auth page won't be shown again on subsequent launches.
+    func completeAuthPage() {
+        onboardingState.hasCompletedAuth = true
         saveOnboardingState()
     }
 
-    var hasCompletedOnboarding: Bool {
+var hasCompletedOnboarding: Bool {
         onboardingState.hasCompletedOnboarding
     }
 }

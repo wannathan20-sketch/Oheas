@@ -116,10 +116,10 @@ struct ChatView: View {
                 guard let prompt, !prompt.isEmpty else { return }
                 pendingPrompt = nil
                 inputText = prompt
-                Task {
-                    // Give SwiftUI time to update inputText before sending
+                // Pre-fill input but don't auto-send — let the user review and tap send.
+                Task { @MainActor in
                     try? await Task.sleep(nanoseconds: 100_000_000)
-                    await MainActor.run { sendMessage() }
+                    isInputFocused = true
                 }
             }
         }

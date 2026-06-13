@@ -38,10 +38,17 @@ class AuthUser(Base):
     id: Mapped[_uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, default=_uuid.uuid4
     )
-    apple_user_id: Mapped[str] = mapped_column(
-        String(256), unique=True, index=True, nullable=False
+    apple_user_id: Mapped[str | None] = mapped_column(
+        String(256), unique=True, index=True, nullable=True
+    )
+    device_id: Mapped[str | None] = mapped_column(
+        String(256), unique=True, index=True, nullable=True
     )
     email: Mapped[str | None] = mapped_column(String(320), nullable=True)
+    nickname: Mapped[str | None] = mapped_column(
+        String(64), unique=True, index=True, nullable=True
+    )
+    password_hash: Mapped[str | None] = mapped_column(String(256), nullable=True)
     full_name: Mapped[str | None] = mapped_column(String(256), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, nullable=False

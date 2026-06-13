@@ -176,6 +176,10 @@ final class OHeasViewModel: ObservableObject {
         get { sync.accountPassword }
         set { sync.accountPassword = newValue }
     }
+    var accountNickname: String {
+        get { sync.accountNickname }
+        set { sync.accountNickname = newValue }
+    }
     var syncState: SyncState { sync.syncState }
     var analyticsSummary: BetaAnalyticsSummary { sync.analyticsSummary }
     var recentErrors: [ErrorEvent] { sync.recentErrors }
@@ -256,6 +260,9 @@ final class OHeasViewModel: ObservableObject {
     func load(aiEnabled: Bool = true, remindersEnabled: Bool = false) async {
         configureSubViewModels()
 
+        // Restore onboarding state so completed users skip the welcome flow.
+        onboarding.loadOnboardingState()
+
         await sync.refreshProductState()
         sync.recordAnalytics(.appOpened)
         recommendation.loadPrivacySettings()
@@ -265,7 +272,7 @@ final class OHeasViewModel: ObservableObject {
             return
         }
 
-        // Load dependent state
+        // Load dependent state (sequential — all MainActor-bound)
         plan.loadGoals()
         memory.loadMemory()
         experiment.loadExperiments()
@@ -316,7 +323,7 @@ final class OHeasViewModel: ObservableObject {
         )
         agentContext = context
 
-        // Load yesterday loop
+        // Load yesterday loop (independent of context building)
         recommendation.loadYesterdayLoop(today: healthPackage.todayMetrics)
 
         // Build prompt payload
@@ -522,9 +529,9 @@ final class OHeasViewModel: ObservableObject {
         )
     }
 
-    func skipHealthKitDuringOnboarding() {
-        onboarding.skipHealthKitDuringOnboarding()
-    }
+    /// Mark auth page as done — won't show again on next launch.
+    func completeAuthPage() { onboarding.completeAuthPage() }
+
 
     // MARK: - Auth
 
@@ -544,6 +551,11 @@ final class OHeasViewModel: ObservableObject {
     func signOutOfApple() { sync.signOutOfApple() }
 
     func restoreAppleSession() { sync.restoreAppleSession() }
+    func performDeviceAuth() async { await sync.performDeviceAuth() }
+    func loginWithEmail() async { await sync.loginWithEmail() }
+    func registerWithEmail() async { await sync.registerWithEmail() }
+    func bindEmail() async { await sync.bindEmail() }
+    func setNickname() async -> Bool { await sync.setNickname() }
 
     // MARK: - Consent
 

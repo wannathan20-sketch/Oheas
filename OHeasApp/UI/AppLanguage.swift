@@ -57,7 +57,7 @@ enum AppLanguage: String, CaseIterable, Identifiable, Equatable {
         dict[.agentTab] = ("智能体", "Agent")
         dict[.aiConsentLabel] = ("AI 生活方式建议授权", "AI lifestyle advice consent")
         dict[.aiEnabled] = ("启用 AI", "Enable OpenAI")
-        dict[.aiFooter] = ("未配置 API 密钥、关闭 AI 或网络失败时，会使用本地规则建议。", "When the API key is missing, AI is disabled, or networking fails, local rule-based recommendations are used.")
+        dict[.aiFooter] = ("未登录云端服务、关闭 AI 或网络失败时，会使用本地规则建议。", "When not signed in to cloud, AI is disabled, or networking fails, local rule-based recommendations are used.")
         dict[.aiOnlineShort] = ("AI 在线", "AI Online")
         dict[.aiSection] = ("AI", "AI")
         dict[.allowRawHealthSamplesToggle] = ("允许原始健康样本", "Allow raw Health samples")
@@ -161,7 +161,6 @@ enum AppLanguage: String, CaseIterable, Identifiable, Equatable {
         dict[.contextNotReady] = ("上下文尚未生成。", "Context is not ready.")
         dict[.continueButton] = ("继续", "Continue")
         dict[.readyButton] = ("准备好了", "Ready")
-        dict[.continueLimitedMode] = ("以受限模式继续", "Continue with limited mode")
         dict[.currentDemo] = ("当前演示", "Current Demo")
         dict[.currentStreak] = ("当前连续", "Current streak")
         dict[.dataConfidence] = ("数据可信度", "Data confidence")
@@ -331,7 +330,7 @@ enum AppLanguage: String, CaseIterable, Identifiable, Equatable {
         dict[.noYesterdayRecommendation] = ("还没有可反馈的昨日建议。", "No yesterday recommendation is available for feedback.")
         dict[.notAsked] = ("未询问", "Not Asked")
         dict[.note] = ("备注", "Note")
-        dict[.offlineBannerText] = ("本地模式 · 基础健康问题仍可回答。如需 AI 建议，请在设置中配置 API 密钥。", "Local mode · Basic health questions still work. Set up an API key in Settings for AI advice.")
+        dict[.offlineBannerText] = ("本地模式 · 基础健康问题仍可回答。如需 AI 建议，请登录账户连接云端服务。", "Local mode · Basic health questions still work. Sign in to connect cloud AI services.")
         dict[.onboardingAINote] = ("AI 建议仅限于生活方式。未经同意，OHeas 使用本地规则。", "AI advice is lifestyle-only. Without consent, OHeas uses local rules.")
         dict[.onboardingRawSamplesNote] = ("原始健康样本默认关闭，不会上传。", "Raw HealthKit samples are off by default and are not uploaded.")
         dict[.openHealthSettings] = ("打开健康设置", "Open Health Settings")
@@ -404,6 +403,38 @@ enum AppLanguage: String, CaseIterable, Identifiable, Equatable {
         dict[.signInLabel] = ("登录", "Sign In")
         dict[.signOut] = ("退出登录", "Sign Out")
         dict[.signUpLabel] = ("注册", "Sign Up")
+        dict[.emailLoginLabel] = ("邮箱登录", "Email Login")
+        dict[.emailLoginDescription] = ("使用邮箱和密码登录已有账户，恢复跨设备数据。", "Sign in with your email and password to recover your account across devices.")
+        dict[.bindEmailLabel] = ("绑定邮箱", "Bind Email")
+        dict[.bindEmailDescription] = ("绑定邮箱后，换手机时可通过邮箱登录恢复数据。", "Bind an email to recover your account when switching devices.")
+        dict[.bindEmailButton] = ("绑定", "Bind")
+        dict[.emailAlreadyBoundLabel] = ("已绑定邮箱", "Email Bound")
+        dict[.emailPlaceholder] = ("请输入邮箱", "Enter email")
+        dict[.passwordPlaceholder] = ("请输入密码（至少6位）", "Enter password (min 6 chars)")
+        dict[.orLabel] = ("或", "or")
+        //
+        dict[.signUpTabLabel] = ("注册", "Sign Up")
+        dict[.signInTabLabel] = ("登录", "Sign In")
+        dict[.createAccountLabel] = ("创建账户", "Create Account")
+        dict[.createAccountButton] = ("创建账户", "Create Account")
+        dict[.registerDescription] = ("创建新账户以跨设备同步数据。已有账户？切换到登录。", "Create a new account to sync data across devices. Already have one? Switch to Sign In.")
+        dict[.deviceAutoLoginNote] = ("设备会自动通过匿名登录保持本地数据可用。登录或注册可在换机时恢复数据。", "Your device stays logged in anonymously for local use. Sign in or register to enable cross-device data recovery.")
+        //
+        dict[.accountSetupLabel] = ("账户设置", "Account")
+        dict[.accountSetupDescription] = ("注册账户可在换机时恢复数据。也可以直接开始使用，稍后在设置中注册。", "Create an account to recover data when switching devices. You can also start now and register later in Settings.")
+        dict[.skipForNowLabel] = ("跳过，稍后设置", "Skip for now")
+        dict[.orContinueLabel] = ("或继续使用", "or continue with")
+        //
+        dict[.authPageTitle] = ("创建账户", "Create Account")
+        dict[.authPageSubtitle] = ("注册后可在换机时恢复数据，并启用云端同步。", "Create an account to recover data across devices and enable cloud sync.")
+        dict[.authPageSkip] = ("跳过，稍后设置", "Skip for now")
+        dict[.authSignedInMessage] = ("已登录，正在进入应用...", "Signed in, entering the app...")
+        dict[.nicknameLabel] = ("昵称", "Nickname")
+        dict[.nicknamePlaceholder] = ("输入昵称", "Enter nickname")
+        dict[.nicknameDescription] = ("设置昵称后，其他用户可以看到你的昵称。昵称全局唯一。", "Set a display nickname visible to other users. Nicknames are unique.")
+        dict[.setNicknameButton] = ("保存昵称", "Save Nickname")
+        dict[.nicknameSaved] = ("昵称已保存", "Nickname saved")
+        dict[.nicknameTaken] = ("昵称已被占用，请换一个", "Nickname taken, try another")
         dict[.signalSummaryGeneral] = ("检测到 %d 个提醒信号，可在更多详情中查看。", "%d signal(s) detected. See details below.")
         dict[.signalSummaryHigh] = ("检测到 %d 个高优先级信号，今天建议降低强度。", "%d high-priority signal(s) detected. Lower intensity today.")
         dict[.signedOutModeLabel] = ("已登出", "Signed out")
@@ -979,7 +1010,6 @@ enum TextKey {
     case goalLabel
     case weeklyFrequency
     case healthKitPermission
-    case continueLimitedMode
     case privacyLabel
     case continueButton
     case readyButton
@@ -1176,6 +1206,45 @@ enum TextKey {
     case dataAvailable
     case dataPartial
     case noData
+
+    // Email login
+    case emailLoginLabel
+    case emailLoginDescription
+    case bindEmailLabel
+    case bindEmailDescription
+    case bindEmailButton
+    case emailAlreadyBoundLabel
+    case emailPlaceholder
+    case passwordPlaceholder
+    case orLabel
+
+    // Email register
+    case signUpTabLabel
+    case signInTabLabel
+    case createAccountLabel
+    case createAccountButton
+    case registerDescription
+    case deviceAutoLoginNote
+
+    // Onboarding account step
+    case accountSetupLabel
+    case accountSetupDescription
+    case skipForNowLabel
+    case orContinueLabel
+
+    // Auth page
+    case authPageTitle
+    case authPageSubtitle
+    case authPageSkip
+    case authSignedInMessage
+
+    // Nickname
+    case nicknameLabel
+    case nicknamePlaceholder
+    case nicknameDescription
+    case setNicknameButton
+    case nicknameSaved
+    case nicknameTaken
 }
 
 extension AppLanguage {

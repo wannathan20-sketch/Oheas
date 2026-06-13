@@ -18,7 +18,7 @@ targets:
       - package: OHeasCore
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.oheas.mvp
+        PRODUCT_BUNDLE_IDENTIFIER: com.oheas.app
         PRODUCT_NAME: OHeas
         INFOPLIST_FILE: OHeasApp/Info.plist
         CODE_SIGN_ENTITLEMENTS: OHeasApp/OHeas.entitlements

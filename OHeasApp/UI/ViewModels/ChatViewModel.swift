@@ -59,7 +59,10 @@ final class ChatViewModel: ObservableObject {
         let config = OpenAIAppConfiguration.load()
         if config.makeClient() != nil {
             connectionStatus = .connected
-            if let key = config.apiKey, !key.isEmpty {
+            // Only persist API key to Keychain when using direct LLM (not backend proxy).
+            // Backend proxy uses JWT from AuthTokenStore — no local key to save.
+            let backendConfigured = BackendConfigStore.latestConfig.isConfigured
+            if !backendConfigured, let key = config.apiKey, !key.isEmpty {
                 KeychainStore.save(key: "DEEPSEEK_API_KEY", value: key)
             }
         } else {
@@ -469,7 +472,7 @@ final class ChatViewModel: ObservableObject {
             streamState = .error(preferredLanguage == "zh" ? "响应超时，请稍后重试" : "Response timed out. Please try again.")
         }
 
-        if let streamingClient = llmClient as? ChatCompletionsClient {
+        if let streamingClient = llmClient as? (any LLMStreaming) {
             let stream = streamingClient.chat(messages: apiMessages)
             do {
                 var accumulated = ""
@@ -574,7 +577,7 @@ final class ChatViewModel: ObservableObject {
         // Try LLM-based summarization, fall back to rule-based
         let newSummary: String
         let config = OpenAIAppConfiguration.load()
-        if let client = config.makeClient() as? ChatCompletionsClient {
+        if let client = config.makeClient() as? (any LLMStreaming) {
             let summaryPrompt = windowManager.buildSummarizeRequest(messages: toSummarize)
             let summaryMessages: [[String: String]] = [
                 ["role": "user", "content": summaryPrompt]

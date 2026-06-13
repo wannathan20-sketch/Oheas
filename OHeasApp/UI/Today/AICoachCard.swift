@@ -71,7 +71,7 @@ struct AICoachCard: View {
             Spacer()
         }
         .padding()
-        .background(OhColor.cardBg)
+        .background(Color.indigo.opacity(0.04))
         .clipShape(RoundedRectangle(cornerRadius: Radius.medium))
     }
 
@@ -96,15 +96,19 @@ struct AICoachCard: View {
                         ConfidenceBadge(level: result.recommendation.confidence, language: language)
                     }
 
-                    // What to do
+                    // What to do — elevated with indigo tinted block (iOS Journal-app style)
                     VStack(alignment: .leading, spacing: 4) {
                         Text(language.text(.actionWhatLabel))
                             .font(.caption.weight(.semibold))
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(.indigo.opacity(0.7))
                         Text(result.recommendation.recommendation)
-                            .font(.body)
+                            .font(.body.weight(.semibold))
+                            .foregroundStyle(.indigo)
                             .fixedSize(horizontal: false, vertical: true)
                     }
+                    .padding(10)
+                    .background(Color.indigo.opacity(0.08))
+                    .clipShape(RoundedRectangle(cornerRadius: Radius.small))
 
                     // Tonight action
                     VStack(alignment: .leading, spacing: 4) {
@@ -135,7 +139,7 @@ struct AICoachCard: View {
                                 .foregroundStyle(.secondary)
                             ForEach(result.recommendation.tomorrowVerification.prefix(3)) { metric in
                                 HStack(spacing: 4) {
-                                    Image(systemName: "circlebadge.fill").font(.system(size: 5)).foregroundStyle(.secondary)
+                                    Image(systemName: "circlebadge.fill").font(.system(size: 8)).foregroundStyle(.secondary)
                                     Text("\(language.verificationMetric(metric.metric)): \(language.verificationDirection(metric.expectedDirection))")
                                         .font(.caption)
                                         .foregroundStyle(.secondary)
@@ -192,7 +196,7 @@ struct AICoachCard: View {
             }
         }
         .padding()
-        .background(OhColor.cardBg)
+        .background(Color.indigo.opacity(0.04))
         .clipShape(RoundedRectangle(cornerRadius: Radius.medium))
         .shadow(color: .indigo.opacity(OhShadow.accentGlow.opacity), radius: OhShadow.accentGlow.radius, y: OhShadow.accentGlow.y)
     }
@@ -252,7 +256,7 @@ struct AICoachCard: View {
             Spacer()
         }
         .padding()
-        .background(OhColor.cardBg)
+        .background(Color.indigo.opacity(0.04))
         .clipShape(RoundedRectangle(cornerRadius: Radius.medium))
     }
 
@@ -261,28 +265,10 @@ struct AICoachCard: View {
     private var actionButtons: some View {
         HStack(spacing: 8) {
             Button {
-                onRefresh()
+                let impact = UIImpactFeedbackGenerator(style: .light)
+                impact.impactOccurred()
+                onSaveFeedback()
             } label: {
-                Label(
-                    isRefreshingRecommendation
-                    ? language.text(.updatingAction)
-                    : language.text(.updateAction),
-                    systemImage: "arrow.clockwise"
-                )
-                .frame(maxWidth: .infinity)
-            }
-            .buttonStyle(.bordered)
-            .pressableScale()
-            .disabled(isRefreshingRecommendation || isStreaming)
-
-            Button { onShowMoreDetails() } label: {
-                Label(language.text(.viewDetailsAction), systemImage: "chart.bar.xaxis")
-                    .frame(maxWidth: .infinity)
-            }
-            .buttonStyle(.bordered)
-            .pressableScale()
-
-            Button { onSaveFeedback() } label: {
                 Label(
                     feedbackJustSaved
                     ? language.text(.feedbackSavedMessage)
@@ -291,9 +277,20 @@ struct AICoachCard: View {
                 )
                 .frame(maxWidth: .infinity)
             }
-            .buttonStyle(.bordered)
+            .buttonStyle(.borderedProminent)
             .pressableScale()
             .tint(feedbackJustSaved ? .green : nil)
+            .disabled(feedbackJustSaved)
+
+            Button {
+                onRefresh()
+            } label: {
+                Image(systemName: "arrow.clockwise")
+                    .font(.caption.weight(.semibold))
+            }
+            .buttonStyle(.bordered)
+            .pressableScale()
+            .disabled(isRefreshingRecommendation || isStreaming)
         }
         .font(.caption)
     }

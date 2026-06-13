@@ -23,6 +23,15 @@ struct AppRootView: View {
     @State private var loadCompleted = false
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.scenePhase) private var scenePhase
+
+    /// Whether to show the auth page instead of the main app.
+    /// True after onboarding completes but before the user signs in or skips.
+    private var shouldShowAuthPage: Bool {
+        viewModel.onboardingState.hasCompletedOnboarding
+            && !viewModel.onboardingState.hasCompletedAuth
+            && viewModel.authState != .signedIn
+    }
 
     var body: some View {
         ZStack {
@@ -30,8 +39,15 @@ struct AppRootView: View {
                 LaunchSplashView(language: language, reduceMotion: reduceMotion)
                     .transition(.opacity)
             } else if viewModel.onboardingState.hasCompletedOnboarding {
-                RootTabView(viewModel: viewModel)
+                if shouldShowAuthPage {
+                    AuthPageView(viewModel: viewModel) {
+                        // onDismiss — called after skip or sign-in
+                    }
                     .transition(.opacity)
+                } else {
+                    RootTabView(viewModel: viewModel)
+                        .transition(.opacity)
+                }
             } else {
                 OnboardingView(viewModel: viewModel)
                     .transition(.opacity)
@@ -41,8 +57,8 @@ struct AppRootView: View {
         .onAppear {
             language = AppLanguage(rawValue: languageRawValue) ?? .chinese
         }
-        .onChange(of: languageRawValue) { newValue in
-            language = AppLanguage(rawValue: newValue) ?? .chinese
+        .onChange(of: languageRawValue) {
+            language = AppLanguage(rawValue: languageRawValue) ?? .chinese
         }
         .task {
             print("[AppRootView] load() called — should appear only once per launch")
@@ -51,6 +67,12 @@ struct AppRootView: View {
             let backendConfig = BackendAppConfiguration.load()
             viewModel.configureBackend(baseURL: backendConfig.baseURL)
             viewModel.restoreAppleSession()
+
+            // If no existing session and backend is configured, try anonymous device login.
+            // This gives users AI access without Apple Sign In.
+            if viewModel.authState == .localOnly, backendConfig.baseURL != nil {
+                await viewModel.performDeviceAuth()
+            }
 
             // Run load() and the minimum splash duration in parallel.
             // The splash shows for at least 1.2 s so the ring animation lands.
@@ -77,6 +99,21 @@ struct AppRootView: View {
             // Fade splash out, content in
             withAnimation(.easeInOut(duration: 0.4)) {
                 showSplash = false
+            }
+        }
+        .onChange(of: scenePhase) { oldPhase, newPhase in
+            guard oldPhase == .background, newPhase == .active else { return }
+            // Refresh HealthKit data when returning from background.
+            Task {
+                if await viewModel.healthData.loadHealthData() != nil {
+                    await MainActor.run {
+                        viewModel.healthData.refreshDerivedMetrics()
+                    }
+                }
+                // Refresh AI recommendation if enabled.
+                if aiEnabled {
+                    await viewModel.refreshRecommendation(aiEnabled: aiEnabled)
+                }
             }
         }
     }

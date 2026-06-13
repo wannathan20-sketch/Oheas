@@ -15,6 +15,7 @@ struct StreakFlameView: View {
 
     @State private var previousCount: Int = 0
     @State private var pulseTrigger = false
+    @State private var pulseTask: Task<Void, Never>?
 
     private var flameScale: CGFloat {
         if count >= 100 { 1.5 }
@@ -54,8 +55,15 @@ struct StreakFlameView: View {
         .onChange(of: count) { _, newCount in
             if isMilestone {
                 pulseTrigger = true
-                DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
-                    pulseTrigger = false
+                pulseTask?.cancel()
+                pulseTask = Task {
+                    try? await Task.sleep(nanoseconds: 1_500_000_000)
+                    guard !Task.isCancelled else { return }
+                    await MainActor.run {
+                        withAnimation(.default) {
+                            pulseTrigger = false
+                        }
+                    }
                 }
             }
             previousCount = newCount

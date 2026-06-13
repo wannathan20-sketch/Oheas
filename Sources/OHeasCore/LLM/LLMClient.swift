@@ -33,6 +33,7 @@ public struct LLMStreamEvent: Sendable {
 
 public protocol LLMStreaming: Sendable {
     func streamRecommendation(payload: CoachPromptPayload) -> AsyncThrowingStream<LLMStreamEvent, Error>
+    func chat(messages: [[String: String]]) -> AsyncThrowingStream<LLMStreamEvent, Error>
 }
 
 public enum LLMClientError: Error, LocalizedError, Sendable {
@@ -257,6 +258,29 @@ public struct MockLLMClient: LLMClientProtocol, LLMStreaming {
                     accumulated += token
                     continuation.yield(LLMStreamEvent(token: token, isComplete: false, accumulatedText: accumulated))
                     try? await Task.sleep(nanoseconds: 30_000_000) // 30ms per token for realistic feel
+                }
+                continuation.yield(LLMStreamEvent(token: "", isComplete: true, accumulatedText: accumulated))
+                continuation.finish()
+            }
+        }
+    }
+
+    public func chat(messages: [[String: String]]) -> AsyncThrowingStream<LLMStreamEvent, Error> {
+        AsyncThrowingStream { continuation in
+            let text = "I'm your health coach (mock mode). I can help answer basic health questions based on the data you've shared. For more detailed advice, connect to the AI service."
+            let tokens = stride(from: 0, to: text.count, by: 3).map { idx in
+                let end = min(idx + 3, text.count)
+                let startIdx = text.index(text.startIndex, offsetBy: idx)
+                let endIdx = text.index(text.startIndex, offsetBy: end)
+                return String(text[startIdx..<endIdx])
+            }
+
+            Task {
+                var accumulated = ""
+                for token in tokens {
+                    accumulated += token
+                    continuation.yield(LLMStreamEvent(token: token, isComplete: false, accumulatedText: accumulated))
+                    try? await Task.sleep(nanoseconds: 30_000_000)
                 }
                 continuation.yield(LLMStreamEvent(token: "", isComplete: true, accumulatedText: accumulated))
                 continuation.finish()

@@ -1017,15 +1017,6 @@ struct OHeasCoreTests {
         #expect(completed.hasCompletedOnboarding)
     }
 
-    @Test("Rejected HealthKit enters limited mode")
-    func onboardingRejectedHealthKitLimitedMode() {
-        let state = OnboardingFlow().healthKitRejected(OnboardingState())
-
-        #expect(state.completedSteps.contains(.healthKitPermission))
-        #expect(state.healthKitAuthorized == false)
-        #expect(state.limitedModeReason != nil)
-    }
-
     @Test("Insufficient baseline shows data coverage message")
     func onboardingBaselineInsufficientMessage() {
         let message = OnboardingFlow().baselineMessage(metrics: [metrics(sleep: nil, hrv: nil, restingHR: 58, steps: 4_000, activeEnergy: 200, exercise: 10)])

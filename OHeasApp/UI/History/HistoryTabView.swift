@@ -118,7 +118,7 @@ struct TrendsTabView: View {
                 .font(.system(size: 9))
                 .foregroundStyle(isToday ? .primary : .secondary)
         }
-        .frame(width: 44)
+        .frame(width: 54, height: 72)
     }
 
     private func shortWeekday(_ date: Date) -> String {

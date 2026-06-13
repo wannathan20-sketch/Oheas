@@ -63,9 +63,10 @@
 		C00E11E2C7237E6DB8D454D9 /* ScoreHistoryChart.swift in Sources */ = {isa = PBXBuildFile; fileRef = 85A6E1BAC2BEE73983E579B3 /* ScoreHistoryChart.swift */; };
 		C14CA3604A5E29C88A4EC564 /* ChatViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB2578FE7FCC4E3DD373E127 /* ChatViewModel.swift */; };
 		C2757E23465C6A103856C894 /* TodayView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FDF62E8BA04D16DD4B3DE2F1 /* TodayView.swift */; };
+		C288435A4F261439FAF5D6CC /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 362157091B0ED7F9785FDB15 /* PrivacyInfo.xcprivacy */; };
 		C605F5BAB3E25FC709D2C538 /* OHeasApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 942A4B2BDA81078DA18D1EF9 /* OHeasApp.swift */; };
+		C99D18F81A6C96A95E7C767F /* AuthPageView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 895A45DD0E238E08B178C829 /* AuthPageView.swift */; };
 		CAC3E56A724F09288F1DD195 /* CoachInlineResponseView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 096162FA8DEC332792F34A5B /* CoachInlineResponseView.swift */; };
-		D3AF39F084BEEB2F738088A4 /* PlanView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4223FA24A1F1734F326525BA /* PlanView.swift */; };
 		D9284410D3033AA97FE00923 /* SparklineView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F744C44D6B1474B190B461C0 /* SparklineView.swift */; };
 		DB71D1647D32452CA75BA6DB /* SkeletonView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EB7F61131182D25696FBB41B /* SkeletonView.swift */; };
 		DC090DFE9AA6056F04BB3999 /* LanguageEnvironment.swift in Sources */ = {isa = PBXBuildFile; fileRef = 835334D8681D9C09EA05B371 /* LanguageEnvironment.swift */; };
@@ -113,10 +114,10 @@
 		2723DEC7790EBC894FFBBCA5 /* EffectivenessDashboardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EffectivenessDashboardView.swift; sourceTree = "<group>"; };
 		2CB3052FAD2B9EC32EC509B5 /* GoalsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GoalsView.swift; sourceTree = "<group>"; };
 		2E670DB3B52D24E0FBCC3592 /* TodayMetricsGrid.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TodayMetricsGrid.swift; sourceTree = "<group>"; };
+		362157091B0ED7F9785FDB15 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		38EB3BEE8F1F07F26FA82470 /* DemoModeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DemoModeView.swift; sourceTree = "<group>"; };
 		3C3DABED8EC91064852B699B /* CoachFollowUpChips.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoachFollowUpChips.swift; sourceTree = "<group>"; };
 		3CDC73890AFFBFC18F9C2EEC /* AppRootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppRootView.swift; sourceTree = "<group>"; };
-		4223FA24A1F1734F326525BA /* PlanView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlanView.swift; sourceTree = "<group>"; };
 		428D7F240A61C66EA6ABEE86 /* ExperimentsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExperimentsView.swift; sourceTree = "<group>"; };
 		461556FE8AEC2EE25BF93826 /* MotionEffects.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MotionEffects.swift; sourceTree = "<group>"; };
 		4F837797CDFEEDB6A78483F2 /* OHeasViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OHeasViewModel.swift; sourceTree = "<group>"; };
@@ -144,6 +145,7 @@
 		834215F85112CC080EDDBBC2 /* OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingView.swift; sourceTree = "<group>"; };
 		835334D8681D9C09EA05B371 /* LanguageEnvironment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LanguageEnvironment.swift; sourceTree = "<group>"; };
 		85A6E1BAC2BEE73983E579B3 /* ScoreHistoryChart.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScoreHistoryChart.swift; sourceTree = "<group>"; };
+		895A45DD0E238E08B178C829 /* AuthPageView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthPageView.swift; sourceTree = "<group>"; };
 		90D52F16CCB54308DC443BBC /* TrendIndicator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrendIndicator.swift; sourceTree = "<group>"; };
 		942A4B2BDA81078DA18D1EF9 /* OHeasApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OHeasApp.swift; sourceTree = "<group>"; };
 		969E734C4FF63B5BABF0CFF9 /* AICoachCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AICoachCard.swift; sourceTree = "<group>"; };
@@ -291,6 +293,7 @@
 				C7FF8F2EEFE88EC73E6A2FFD /* AppConfiguration.swift */,
 				10AF8696F59BAC975498EF55 /* AppLanguage.swift */,
 				3CDC73890AFFBFC18F9C2EEC /* AppRootView.swift */,
+				895A45DD0E238E08B178C829 /* AuthPageView.swift */,
 				E76B6DEF6B2676575981C7BD /* BetaAnalyticsDashboardView.swift */,
 				F98DC6DDFAF52AC4BDA5DA57 /* BetaFeedbackView.swift */,
 				A7E6B2FF304227513754ADD0 /* BetaReadinessReport.swift */,
@@ -308,7 +311,6 @@
 				4F837797CDFEEDB6A78483F2 /* OHeasViewModel.swift */,
 				834215F85112CC080EDDBBC2 /* OnboardingView.swift */,
 				13938EC89DD6FC46246F83C9 /* PlanTabView.swift */,
-				4223FA24A1F1734F326525BA /* PlanView.swift */,
 				C4AC6D4E262FFE45313CEA1F /* PrivacyView.swift */,
 				66B92C6496334357F0D50F51 /* RootTabView.swift */,
 				B325ED9EF661062448AA6CD0 /* SettingsView.swift */,
@@ -329,6 +331,7 @@
 				706FD77C6C6F2D4F8E993C61 /* Info.plist */,
 				06C20B4C07910EC20ED343C3 /* OHeas.entitlements */,
 				942A4B2BDA81078DA18D1EF9 /* OHeasApp.swift */,
+				362157091B0ED7F9785FDB15 /* PrivacyInfo.xcprivacy */,
 				5B409298A91F6331F826FF19 /* UI */,
 			);
 			path = OHeasApp;
@@ -362,6 +365,7 @@
 			buildConfigurationList = 2C7D2C5D98B450FEF7C651C2 /* Build configuration list for PBXNativeTarget "OHeas" */;
 			buildPhases = (
 				08DFCB5D6C2AD29D6103CE7C /* Sources */,
+				9CB2EEB6A5212CDE1C2B939F /* Resources */,
 				612E5ECD7C09C326CA55FB11 /* Frameworks */,
 			);
 			buildRules = (
@@ -432,6 +436,17 @@
 		};
 /* End PBXProject section */
 
+/* Begin PBXResourcesBuildPhase section */
+		9CB2EEB6A5212CDE1C2B939F /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				C288435A4F261439FAF5D6CC /* PrivacyInfo.xcprivacy in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
 /* Begin PBXSourcesBuildPhase section */
 		08DFCB5D6C2AD29D6103CE7C /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
@@ -444,6 +459,7 @@
 				FBB78D842C190A040D60BE97 /* AppConfiguration.swift in Sources */,
 				5A35D970B04D699508525ACE /* AppLanguage.swift in Sources */,
 				A1E1D931052290960A0F1725 /* AppRootView.swift in Sources */,
+				C99D18F81A6C96A95E7C767F /* AuthPageView.swift in Sources */,
 				3FBDA50DF2AE43B06CC8BEBA /* BadgeCard.swift in Sources */,
 				AC1BA4FE12D93BCD965A3938 /* BetaAnalyticsDashboardView.swift in Sources */,
 				0D466EB270A5875917CA0EBD /* BetaFeedbackView.swift in Sources */,
@@ -489,7 +505,6 @@
 				E305BADB44830BFEB50D83CF /* OnboardingView.swift in Sources */,
 				FE1AFBC9DF4DDE0E085B140A /* OnboardingViewModel.swift in Sources */,
 				0654C8427315CB5270663B4B /* PlanTabView.swift in Sources */,
-				D3AF39F084BEEB2F738088A4 /* PlanView.swift in Sources */,
 				27E6F3B70D124F6EDA87F1BC /* PlanViewModel.swift in Sources */,
 				F2BEA1158E700F99961B613C /* PrivacyView.swift in Sources */,
 				94C7197C3E3C5919414CDC40 /* RecommendationViewModel.swift in Sources */,
@@ -582,7 +597,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.oheas.mvp;
+				PRODUCT_BUNDLE_IDENTIFIER = com.oheas.app;
 				PRODUCT_NAME = OHeas;
 				SDKROOT = iphoneos;
 				SWIFT_VERSION = 6.0;
@@ -666,7 +681,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.oheas.mvp;
+				PRODUCT_BUNDLE_IDENTIFIER = com.oheas.app;
 				PRODUCT_NAME = OHeas;
 				SDKROOT = iphoneos;
 				SWIFT_VERSION = 6.0;

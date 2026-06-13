@@ -23,6 +23,7 @@ public enum OnboardingStep: String, Codable, CaseIterable, Hashable, Identifiabl
 
 public struct OnboardingState: Codable, Equatable, Sendable {
     public var hasCompletedOnboarding: Bool
+    public var hasCompletedAuth: Bool
     public var completedSteps: [OnboardingStep]
     public var selectedGoals: [UserGoal]
     public var healthKitAuthorized: Bool
@@ -35,6 +36,7 @@ public struct OnboardingState: Codable, Equatable, Sendable {
 
     public init(
         hasCompletedOnboarding: Bool = false,
+        hasCompletedAuth: Bool = false,
         completedSteps: [OnboardingStep] = [],
         selectedGoals: [UserGoal] = [],
         healthKitAuthorized: Bool = false,
@@ -46,6 +48,7 @@ public struct OnboardingState: Codable, Equatable, Sendable {
         updatedAt: Date = Date()
     ) {
         self.hasCompletedOnboarding = hasCompletedOnboarding
+        self.hasCompletedAuth = hasCompletedAuth
         self.completedSteps = completedSteps
         self.selectedGoals = selectedGoals
         self.healthKitAuthorized = healthKitAuthorized
@@ -86,13 +89,6 @@ public struct OnboardingFlow: Sendable {
         }
         copy.updatedAt = Date()
         copy.hasCompletedOnboarding = Set(copy.completedSteps) == Set(OnboardingStep.allCases)
-        return copy
-    }
-
-    public func healthKitRejected(_ state: OnboardingState) -> OnboardingState {
-        var copy = complete(step: .healthKitPermission, in: state)
-        copy.healthKitAuthorized = false
-        copy.limitedModeReason = "HealthKit permission was not granted. OHeas will use mock or limited mode."
         return copy
     }
 

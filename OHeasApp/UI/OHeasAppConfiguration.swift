@@ -37,6 +37,10 @@ struct OpenAIAppConfiguration {
             ?? KeychainStore.load(key: "DEEPSEEK_API_KEY")
 
         if let key = deepSeekKey, !key.isEmpty, key != "DEEPSEEK_API_KEY_PLACEHOLDER" {
+            // Persist to Keychain so home-screen launches work without backend.
+            if KeychainStore.load(key: "DEEPSEEK_API_KEY") != key {
+                _ = KeychainStore.save(key: "DEEPSEEK_API_KEY", value: key)
+            }
             let model = environment["DEEPSEEK_MODEL"]
                 ?? bundle.object(forInfoDictionaryKey: "DEEPSEEK_MODEL") as? String
                 ?? "deepseek-chat"
@@ -77,6 +81,12 @@ struct OpenAIAppConfiguration {
     }
 
     func makeClient() -> LLMClientProtocol? {
+        // Tier 1: Backend proxy (server-side API key, JWT authenticated — preferred)
+        if let backendClient = _makeBackendLLMClient() {
+            return backendClient
+        }
+
+        // Tier 2: Local API key (direct call, for dev/testing without backend)
         guard let apiKey else { return nil }
 
         switch provider {
@@ -100,5 +110,18 @@ struct OpenAIAppConfiguration {
         case .openAI:
             return OpenAIClient(apiKey: apiKey, model: model)
         }
+    }
+
+    /// Attempt to create a BackendLLMClient when the backend is configured
+    /// (user signed in with Apple, JWT token available).
+    private func _makeBackendLLMClient() -> LLMClientProtocol? {
+        let cfg = BackendConfigStore.latestConfig
+        guard cfg.isConfigured,
+              let baseURL = cfg.baseURL,
+              let token = cfg.bearerToken,
+              !token.isEmpty
+        else { return nil }
+
+        return BackendLLMClient(baseURL: baseURL, bearerToken: token)
     }
 }

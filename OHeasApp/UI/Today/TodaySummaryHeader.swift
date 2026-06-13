@@ -12,10 +12,13 @@ import OHeasCore
 import SwiftUI
 
 /// The top section of TodayView: gradient greeting area + prominent score ring +
-/// a single distilled insight line ("One Big Thing").
+/// a single distilled insight line ("One Big Thing") + compact 3-metric strip.
 ///
 /// Replaces the separate TodayHeroSection + BodyBudgetRing pairing with a unified
 /// score-first layout where the ring is the visual anchor of the entire page.
+///
+/// Phase 23: gradient extended to 140pt (Oura-style recovery backdrop),
+/// compact 3-metric horizontal strip below ring replaces the bulky BodyBudgetGauge card.
 struct TodaySummaryHeader: View {
     let score: BodyBudgetScore?
     let today: DailyHealthMetrics
@@ -26,21 +29,26 @@ struct TodaySummaryHeader: View {
     let reduceMotion: Bool
     /// Current check-in streak count (for flame display).
     var checkInStreak: Int = 0
+    /// Tap action on the score ring (e.g., navigate to Trends).
+    var onTapScoreRing: (() -> Void)?
+    /// Recent daily metrics for computing trends in the compact strip.
+    var recentDailyMetrics: [DailyHealthMetrics] = []
 
     @State private var heroGlow = false
+    @State private var glowCycles = 0
 
     private var hour: Int { Calendar.current.component(.hour, from: Date()) }
 
     var body: some View {
         VStack(spacing: 0) {
-            // Compressed gradient header (80pt vs old 140pt)
+            // Extended gradient header (140pt) — Oura-style recovery backdrop
             ZStack(alignment: .bottomLeading) {
                 LinearGradient(
                     colors: gradientColors,
                     startPoint: .top,
                     endPoint: .bottom
                 )
-                .frame(height: 80)
+                .frame(height: 140)
 
                 HStack(alignment: .top) {
                     VStack(alignment: .leading, spacing: 2) {
@@ -63,7 +71,7 @@ struct TodaySummaryHeader: View {
                     dataSourceBadge
                 }
                 .padding(.horizontal)
-                .padding(.bottom, 12)
+                .padding(.bottom, 72)  // push greeting up into the taller gradient
             }
 
             // Score ring — overlaps the gradient boundary for visual continuity
@@ -75,28 +83,105 @@ struct TodaySummaryHeader: View {
                 reduceMotion: reduceMotion
             )
             .padding(.top, -30)
-
-            // "One Big Thing" insight
-            VStack(spacing: 4) {
-                if let insight = oneBigThing {
-                    Text(insight)
-                        .font(.subheadline.weight(.medium))
-                        .foregroundStyle(.primary)
-                        .multilineTextAlignment(.center)
-                        .padding(.horizontal)
-                } else {
-                    Text(language.text(.loading))
-                        .font(.subheadline)
-                        .foregroundStyle(.tertiary)
-                }
+            .onTapGesture {
+                onTapScoreRing?()
             }
+
+            // Compact 3-metric horizontal strip — at-a-glance sleep/HRV/RHR
+            metricStrip
+                .padding(.horizontal, 16)
+                .padding(.top, 12)
+
+            // "One Big Thing" insight — card with left accent bar
+            VStack(spacing: 0) {
+                HStack(alignment: .top, spacing: 10) {
+                    Rectangle()
+                        .fill(OhColor.primary.opacity(0.5))
+                        .frame(width: 3)
+                        .clipShape(RoundedRectangle(cornerRadius: Radius.tiny))
+
+                    if let insight = oneBigThing {
+                        Text(insight)
+                            .font(.subheadline.weight(.medium))
+                            .foregroundStyle(.primary)
+                            .multilineTextAlignment(.leading)
+                    } else {
+                        Text(language.text(.loading))
+                            .font(.subheadline)
+                            .foregroundStyle(.tertiary)
+                    }
+                }
+                .padding(12)
+            }
+            .background(.ultraThinMaterial)
+            .clipShape(RoundedRectangle(cornerRadius: Radius.medium))
+            .padding(.horizontal, 16)
             .padding(.top, 8)
             .padding(.bottom, 12)
         }
         .onAppear {
             guard !reduceMotion else { return }
-            withAnimation(OhAnimation.glow) { heroGlow = true }
+            withAnimation(OhAnimation.glow.repeatCount(3, autoreverses: true)) {
+                heroGlow = true
+            }
         }
+    }
+
+    // MARK: - Compact Metric Strip
+
+    /// Three key recovery metrics in a compact horizontal row:
+    /// each shows icon + value + trend arrow. Replaces the bulky BodyBudgetGauge.
+    private var metricStrip: some View {
+        HStack(spacing: 0) {
+            metricPill(
+                icon: "bed.double.fill",
+                color: OhColor.sleep,
+                value: today.sleepHours.map { String(format: "%.1fh", $0) } ?? language.missing,
+                trend: sleepTrend
+            )
+            Spacer()
+            metricPill(
+                icon: "waveform.path.ecg",
+                color: OhColor.hrv,
+                value: today.hrv.map { String(format: "%.0fms", $0) } ?? language.missing,
+                trend: hrvTrend
+            )
+            Spacer()
+            metricPill(
+                icon: "heart.fill",
+                color: OhColor.restingHR,
+                value: today.restingHeartRate.map { String(format: "%.0fbpm", $0) } ?? language.missing,
+                trend: rhrTrend
+            )
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(.ultraThinMaterial)
+        .clipShape(RoundedRectangle(cornerRadius: Radius.medium))
+    }
+
+    private func metricPill(icon: String, color: Color, value: String, trend: Trend?) -> some View {
+        HStack(spacing: 4) {
+            Image(systemName: icon)
+                .font(.caption2)
+                .foregroundStyle(color)
+            Text(value)
+                .font(.caption.weight(.semibold))
+            TrendIndicator(trend: trend, higherIsBetter: icon != "heart.fill")
+        }
+        .frame(minWidth: 0)
+    }
+
+    // MARK: - Trend computation
+
+    private var sleepTrend: Trend? {
+        Trend.compute(from: recentDailyMetrics.suffix(7).map(\.sleepHours))
+    }
+    private var hrvTrend: Trend? {
+        Trend.compute(from: recentDailyMetrics.suffix(7).map(\.hrv))
+    }
+    private var rhrTrend: Trend? {
+        Trend.computeInverted(from: recentDailyMetrics.suffix(7).map(\.restingHeartRate))
     }
 
     // MARK: - Greeting

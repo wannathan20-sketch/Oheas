@@ -52,7 +52,7 @@ struct InteractiveSparklineView: View {
 
                     // Draw the sparkline
                     if count > 1, validPairs.count > 1 {
-                        let (minY, maxY, yRange, xStep) = computeScale(
+                        let (minY, _, yRange, xStep) = computeScale(
                             validPairs: validPairs, count: count, width: geo.size.width
                         )
 
@@ -90,7 +90,7 @@ struct InteractiveSparklineView: View {
                                 .position(x: indicatorX, y: indicatorY)
                                 .shadow(color: color.opacity(0.5), radius: 2)
                         }
-                    } else if let first = validPairs.first {
+                    } else if validPairs.first != nil {
                         Circle()
                             .fill(color)
                             .frame(width: 4, height: 4)

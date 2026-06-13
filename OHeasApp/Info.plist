@@ -22,6 +22,8 @@
 	<true/>
 	<key>NSHealthShareUsageDescription</key>
 	<string>OHeas reads sleep, recovery, activity, and workout data to prepare a daily lifestyle coaching context. No raw HealthKit samples are uploaded.</string>
+	<key>OHEAS_BACKEND_URL</key>
+	<string></string>
 	<key>NSHealthUpdateUsageDescription</key>
 	<string>OHeas does not write data to Apple Health.</string>
 	<key>UILaunchScreen</key>

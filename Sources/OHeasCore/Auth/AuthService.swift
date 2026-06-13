@@ -13,12 +13,14 @@ public struct AuthenticatedUser: Codable, Equatable, Identifiable, Sendable {
     public var id: UUID
     public var email: String?
     public var displayName: String?
+    public var nickname: String?
     public var isLocalOnly: Bool
 
-    public init(id: UUID = UUID(), email: String? = nil, displayName: String? = nil, isLocalOnly: Bool) {
+    public init(id: UUID = UUID(), email: String? = nil, displayName: String? = nil, nickname: String? = nil, isLocalOnly: Bool) {
         self.id = id
         self.email = email
         self.displayName = displayName
+        self.nickname = nickname
         self.isLocalOnly = isLocalOnly
     }
 

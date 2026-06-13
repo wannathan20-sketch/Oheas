@@ -132,7 +132,7 @@ public struct RuleBasedRecommendationGenerator: Sendable {
             case .ready: "Do one easy-to-moderate movement session, capped at 30 minutes."
             case .balanced: "Keep your normal routine and add one 10-minute walk."
             case .recoveryLow: "Keep training easy today and choose recovery over intensity."
-            case .overloaded: "Skip intense training today and use low-intensity mobility instead."
+            case .overloaded: "Skip intense training today — keep it light and easy with low-intensity mobility instead."
             case .uncertain: "Choose a low-risk option: an easy walk, hydration, and no intensity push."
             }
         }

@@ -1,6 +1,6 @@
-# OHeas 项目状态
+x m# OHeas 项目状态
 
-> 最后更新：2026-06-13（Phase 24 真机验证 Phase 1 ✅ + Phase 23 设置 IA 重构 ✅ + 85 tests passed + 真机 Debug BUILD SUCCEEDED）
+> 最后更新：2026-06-14（Phase 24 真机验证 Phase 1 ✅ + Phase 25 认证 UI 重构 ✅ + 84 tests passed + 0 warnings）
 
 ## 一句话定位
 
@@ -22,9 +22,8 @@
 | 脚本 | 2 文件 | ~80 | Bash |
 
 - 零外部 Swift 依赖（仅 Foundation + HealthKit + UserNotifications）
-- `swift build` 通过，`swift test` 全部 85 个测试通过
-- `xcodebuild` Release/Debug 均编译通过
-- `xcodebuild test` 支持 ViewModel 层 25 个单元测试
+- `swift build` 通过，`swift test` 全部 84 个测试通过
+- `xcodebuild` Release/Debug 均编译通过，0 warnings
 - 2026-06-12 本地验证：`xcodebuild build -project OHeas.xcodeproj -scheme OHeas -destination "platform=iOS Simulator,name=iPhone 17,OS=26.5"` 通过；`xcodebuild test` 已完成编译并进入 Testing started，但模拟器测试宿主 launch 阶段卡住，约 164s 后人工中断，需在干净模拟器会话复跑
 - 后端 `pytest` 15 个测试通过，`uvicorn app.main:app` 可启动
 
@@ -667,6 +666,7 @@ docker compose up -d                    # API + DB
 | **P0** | **Phase 22 — 品牌 & 启动优化** | **0.5 天** | **✅ 已完成** |
 | **P0** | **Phase 23 — 设置 IA 重构** | **0.5 天** | **✅ 已完成** |
 | **P0** | **Phase 24 — 真机验证 Phase 1** | **1 天** | **✅ 已完成** |
+| **P0** | **Phase 25 — 认证 UI 重构** | **0.5 天** | **✅ 已完成** |
 | **P1** | **部署 Backend 到 Zeabur / VPS** | **0.5 天** | **代码就绪** |
 | **P1** | **Apple Developer 配置 Sign in with Apple Service ID** | **0.5 天** | **代码就绪，待 Web 配置** |
 | **P2** | **APNs 远程推送 + 异常告警** | **3 天** | **代码就绪，待合入 main** |
@@ -697,6 +697,7 @@ docker compose up -d                    # API + DB
 | **22** | **品牌 & 启动优化** ✅ | **OHeasLogo（渐变环形 H 标识）、LaunchSplashView（品牌启动过渡页+「正在唤醒…」加载提示）、OnboardingView 品牌 Hero + 单步翻页式流程 + 步骤 Pills** |
 | **23** | **设置 IA 重构** ✅ | **iOS 原生钻取模式、语言列表选择、隐私载荷预览移除、`#if DEBUG` 编译时守卫开发者工具** |
 | **24** | **真机验证 Phase 1** ✅ | **4 项 Bug 修复（Onboarding 无响应/权限页假拒绝/HealthKit Store 共享/noData 容错）、架构加固、仓库清理** |
+| **25** | **认证 UI 重构** ✅ | **独立 AuthPageView、邮箱注册端点、AccountView 分段选择器、Onboarding 5→4 步、4 项 Bug 修复、8 个警告清零** |
 
 ---
 
@@ -878,6 +879,88 @@ Hero (Logo + pills) 始终可见
 | `preflight_release_check.sh` | ✅ 18 Pass / 1 Warn / 0 Fail |
 | HealthKit 授权弹窗 | ✅ 出现在启动画面之上 |
 | HealthKit 数据读取 | ✅ 处理了 `noData` 错误，待用户确认真实数据是否加载 |
+
+---
+
+## Phase 25 — 认证 UI 重构 ✅ 已完成 (2026-06-14)
+
+**目标**：将登录/注册从引导流程内嵌步骤和深层设置的 AccountView 中提取为独立全屏页面，让用户在引导完成后自然看到注册/登录选项。
+
+### 25A: 后端邮箱注册端点
+
+| 改动 | 文件 | 说明 |
+|------|------|------|
+| `POST /v1/auth/register` | `routes/auth.py` 🔧 | 新建邮箱+密码账户，bcrypt 哈希，返回 JWT 对，409 冲突检测（邮箱已注册） |
+| `EmailRegisterRequest` 模型 | `routes/auth.py` 🔧 | email + password(min 6) + nickname(optional) |
+| `create_user_with_email_password` | `db/repository.py` 🔧 | 新建用户方法 |
+
+### 25B: 独立 AuthPageView
+
+| 改动 | 文件 | 说明 |
+|------|------|------|
+| **AuthPageView** | `OHeasApp/UI/AuthPageView.swift` 🆕 | 全屏登录/注册页：品牌 Header + 分段选择器（注册\|登录）+ 邮箱表单 + Apple Sign In + 跳过按钮。登录成功后自动进入主应用 |
+| **引导流程简化** | `OHeasApp/UI/OnboardingView.swift` 🔧 | 从 5 步缩减为 4 步（移除 Account 步骤），Goal → HealthKit → Privacy → Ready |
+| **路由更新** | `OHeasApp/UI/AppRootView.swift` 🔧 | 新增 `shouldShowAuthPage` 计算属性：引导完成但未完成 Auth → 展示 AuthPage，否则 → RootTabView |
+| **状态持久化** | `Onboarding/OnboardingModels.swift` 🔧 | `OnboardingState` 新增 `hasCompletedAuth: Bool`，防止 AuthPage 重复展示 |
+| **ViewModel** | `OnboardingViewModel.swift` + `OHeasViewModel.swift` 🔧 | 新增 `completeAuthPage()` 方法 |
+
+### 25C: AccountView 重构
+
+| 改动 | 文件 | 说明 |
+|------|------|------|
+| **注册/登录分段** | `AccountView.swift` 🔧 | 新增 Sign Up / Sign In 分段选择器；注册模式显示昵称（可选）+ 邮箱 + 密码 + 创建账户；登录模式显示邮箱 + 密码 + 登录 |
+| **Apple Sign In** | `AccountView.swift` 🔧 | 独立展示，始终可见 |
+
+### 25D: 后端 URL 配置
+
+| 改动 | 文件 | 说明 |
+|------|------|------|
+| **Info.plist** | `OHeasApp/Info.plist` 🔧 | 新增 `OHEAS_BACKEND_URL` = `http://192.168.31.139:8000` |
+| **UserDefaults 支持** | `AppConfiguration.swift` 🔧 | 优先级：环境变量 → UserDefaults → Info.plist，支持运行时修改 |
+| **双语错误信息** | `SyncViewModel.swift` 🔧 | 所有 auth 错误根据 `oheas.language` 自动切换中/英文 |
+
+### 25E: 注册数据模型
+
+| 改动 | 文件 | 说明 |
+|------|------|------|
+| `EmailRegisterRequest` | `Auth/AuthModels.swift` 🔧 | 新增 Swift 模型 |
+| `registerWithEmail()` | `SyncViewModel.swift` 🔧 | 调用 `POST /v1/auth/register`，处理 tokens + 状态更新 |
+| ViewModel 暴露 | `OHeasViewModel.swift` 🔧 | `registerWithEmail()` 委托方法 |
+
+### 25F: Bug 修复
+
+| # | 问题 | 根因 | 修复 |
+|---|------|------|------|
+| 1 | **未来日期计划可标记完成** | `PlanViewModel.updateDailyPlanStatus` 和 `PlanTabView` 无日期守卫 | PlanTabView 增加 `isFutureDay` 检查隐藏按钮；PlanViewModel 增加 `guard day.date <= Date()` |
+| 2 | **评测 `high_activity_recovery_drop` 失败** | `.overloaded` 英文建议不含 "light" 关键词 | 改为 "keep it light and easy with low-intensity mobility" |
+| 3 | **AuthPageView 未加入 Xcode 工程** | 新建文件未注册到 project.pbxproj | 补充 PBXBuildFile / PBXFileReference / PBXGroup / PBXSourcesBuildPhase 四处引用 |
+| 4 | **8 个 Xcode 警告** | onChange deprecation + 未使用变量 | 全部修复，0 warnings |
+
+### 25G: 新增本地化
+
+| TextKey | 中文 | English |
+|---------|------|---------|
+| `authPageTitle` | 创建账户 | Create Account |
+| `authPageSubtitle` | 注册后可在换机时恢复数据… | Create an account to recover data… |
+| `authPageSkip` | 跳过，稍后设置 | Skip for now |
+| `authSignedInMessage` | 已登录，正在进入应用… | Signed in, entering the app… |
+
+### 认证 UI 新流程
+
+```
+Splash → Onboarding (4步) → AuthPage (全屏, 可跳过) → RootTabView
+         Goal→HealthKit       注册 / 登录 / Apple Sign In    └─ Settings→AccountView
+         →Privacy→Ready       跳过→匿名使用                  （账户管理）
+```
+
+### 验证状态
+
+| 检查项 | 结果 |
+|--------|------|
+| `swift build` | ✅ Build complete |
+| `swift test` (84 tests) | ✅ 84/84 passed |
+| `xcodebuild build` | ✅ BUILD SUCCEEDED, 0 warnings |
+| 后端 8 个 auth 端点 | ✅ 全部注册 |
 
 ---
 

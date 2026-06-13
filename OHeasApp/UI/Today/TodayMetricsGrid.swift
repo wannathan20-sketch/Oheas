@@ -19,9 +19,6 @@ struct TodayMetricsGrid: View {
     var body: some View {
         if !comparisons.isEmpty {
             VStack(alignment: .leading, spacing: 10) {
-                Label(language.text(.metricsTab), systemImage: "chart.bar.fill")
-                    .font(.subheadline.weight(.semibold))
-
                 LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
                     ForEach(comparisons, id: \.metric) { comparison in
                         MetricTrendCard(
@@ -53,18 +50,28 @@ struct TodayMetricsGrid: View {
         recentDailyMetrics.map(\.date)
     }
 
-    private func recentValues(for metric: HealthMetric) -> [Double?] {
-        recentDailyMetrics.map { metrics -> Double? in
-            switch metric {
-            case .sleepHours:        metrics.sleepHours
-            case .hrv:              metrics.hrv
-            case .restingHeartRate:  metrics.restingHeartRate
-            case .steps:             metrics.steps
-            case .activeEnergyKcal:  metrics.activeEnergyKcal
-            case .exerciseMinutes:   metrics.exerciseMinutes
-            case .workouts:          Double(metrics.workouts.count)
+    /// Precompute all metric → values mapping once instead of per-card.
+    private var recentValuesByMetric: [HealthMetric: [Double?]] {
+        guard !recentDailyMetrics.isEmpty else { return [:] }
+        var dict: [HealthMetric: [Double?]] = [:]
+        for metric in HealthMetric.allCases {
+            dict[metric] = recentDailyMetrics.map { metrics -> Double? in
+                switch metric {
+                case .sleepHours:        metrics.sleepHours
+                case .hrv:              metrics.hrv
+                case .restingHeartRate:  metrics.restingHeartRate
+                case .steps:             metrics.steps
+                case .activeEnergyKcal:  metrics.activeEnergyKcal
+                case .exerciseMinutes:   metrics.exerciseMinutes
+                case .workouts:          Double(metrics.workouts.count)
+                }
             }
         }
+        return dict
+    }
+
+    private func recentValues(for metric: HealthMetric) -> [Double?] {
+        recentValuesByMetric[metric] ?? []
     }
 
     // MARK: - Workouts list
