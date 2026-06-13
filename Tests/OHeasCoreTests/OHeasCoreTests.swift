@@ -1105,7 +1105,9 @@ struct OHeasCoreTests {
 
     @Test("Backend schema files exist with required tables and RLS ownership")
     func backendSchemaFilesExist() throws {
-        let root = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+        // Use #filePath to locate project root regardless of cwd.
+        let testFile = URL(fileURLWithPath: #filePath)
+        let root = testFile.deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
         let schema = try String(contentsOf: root.appendingPathComponent("backend/postgres/schema.sql"), encoding: .utf8)
         let rls = try String(contentsOf: root.appendingPathComponent("backend/postgres/rls.sql"), encoding: .utf8)
         let requiredTables = [
